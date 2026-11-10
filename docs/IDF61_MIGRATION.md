@@ -42,6 +42,27 @@ environment, then run from the migration worktree:
 exposes only build/reconfigure, and performs no flash, serial-open or reset.
 Use `-Jobs 8` to override the default four parallel compilation jobs.
 
+On Linux, install Espressif's Linux prerequisites first (they include CMake and
+Ninja, which `install.sh` does not install on Linux; see the
+[ESP-IDF Linux setup guide](https://docs.espressif.com/projects/esp-idf/en/stable/esp32/get-started/linux-macos-setup-legacy.html)),
+then ESP-IDF v6.1 with its own `install.sh esp32s3`, and use
+`scripts/build_idf.sh`, which mirrors the PowerShell wrapper option for option
+(`--profile`, `--idf-path` or `IDF_PATH`, `--tools-path` or `IDF_TOOLS_PATH`,
+`--jobs`, `--action build|reconfigure`) and runs the same `idf_prepare.py` and
+`idf.py` steps with the ESP-IDF Python environment:
+
+```bash
+sudo apt-get install git wget flex bison gperf python3 python3-pip python3-venv cmake ninja-build ccache libffi-dev libssl-dev dfu-util libusb-1.0-0
+git clone -b v6.1 --recursive https://github.com/espressif/esp-idf.git <esp-idf-v6.1>
+<esp-idf-v6.1>/install.sh esp32s3
+./scripts/build_idf.sh --profile 4_3 --idf-path <esp-idf-v6.1>
+./scripts/build_idf.sh --profile 7_dual_i2c --idf-path <esp-idf-v6.1>
+```
+
+The Linux wrapper produces development builds only. It does not write
+`generated/release-artifacts.json`, the post-build stamp that only the Windows
+installer packaging scripts consume.
+
 Local SDK prepared on 2026-09-11:
 
 - `D:\21cncstudio\project_aura\tmp\idf61-sdk\esp-idf`, v6.1 commit
