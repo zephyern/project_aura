@@ -739,6 +739,7 @@ void setup()
         // Units only: the web download converts with the current setting.
         dailyExtremaHistory.setPreferredUnitsC(temp_units_c);
         // The card is prepared (tail repair, last row) on the first poll once ready.
+        longHistory.setFullAction(storage.config().history_full_action);
         if (longHistory.attach(chartsHistory)) longHistory.setEnabled(true);
     } else {
         dailyExtremaHistory.begin(sdCardManager, temp_units_c);
@@ -1040,7 +1041,11 @@ void loop()
     }
     if (!wake_background_paused) {
         const time_t history_now = time(nullptr);
-        longHistory.poll(history_now, system_time_trusted);
+        const SdCardManager::Status sd_status = sdCardManager.status();
+        LongHistory::Space space;
+        space.known = sd_status.filesystem_total_bytes != 0;
+        space.free_bytes = sd_status.filesystem_free_bytes;
+        longHistory.poll(history_now, system_time_trusted, space);
     }
     chartsRuntimeState.update(chartsHistory);
     webRuntimeState.update(currentData, sensorManager.isWarmupActive(), fanControl);

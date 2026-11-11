@@ -40,12 +40,13 @@ bool validDayKey(uint32_t key) {
     return day <= max_day;
 }
 
-// Newest entry whose name parses, tracked across listDir callbacks.
+// Newest (and oldest) entry whose name parses, tracked across listDir callbacks.
 struct Newest {
     enum Kind : uint8_t { Year, Month, Day } kind;
     uint32_t year = 0;
     uint32_t month = 0;
     uint32_t best = 0;
+    uint32_t lowest = 0; // 0: none
 };
 
 bool takeNewest(const char *name, bool is_dir, void *context) {
@@ -69,12 +70,14 @@ bool takeNewest(const char *name, bool is_dir, void *context) {
         if (!validDayKey(value)) return true;
     }
     if (value > n.best) n.best = value;
+    if (n.lowest == 0 || value < n.lowest) n.lowest = value;
     return true;
 }
 
 // Lists `path` for the newest entry of `kind`. Failed only on storage failure.
 FindResult newestIn(const DailyHistoryStorage &storage, const char *path, Newest &n) {
     n.best = 0;
+    n.lowest = 0;
     const DirListResult listed = storage.listDir(path, &takeNewest, &n);
     if (listed == DirListResult::Failed) return FindResult::Failed;
     return n.best ? FindResult::Found : FindResult::None;
@@ -132,6 +135,31 @@ FindResult findNewestQuarterFile(const DailyHistoryStorage &storage, uint32_t &u
         }
     }
     return FindResult::None;
+}
+
+FindResult findOldestQuarterMonth(const DailyHistoryStorage &storage, uint32_t &utc_year, uint32_t &utc_month) {
+    Newest years{Newest::Year};
+    FindResult r = newestIn(storage, kQuarterRoot, years);
+    if (r != FindResult::Found) return r;
+    for (uint32_t year = years.lowest; year <= years.best; ++year) {
+        char year_path[kPathCapacity];
+        snprintf(year_path, sizeof(year_path), "%s/%04u", kQuarterRoot, static_cast<unsigned>(year));
+        Newest months{Newest::Month};
+        r = newestIn(storage, year_path, months);
+        if (r == FindResult::Failed) return r;
+        if (r == FindResult::None) continue;
+        utc_year = year;
+        utc_month = months.lowest;
+        return FindResult::Found;
+    }
+    return FindResult::None;
+}
+
+bool quarterMonthPath(uint32_t utc_year, uint32_t utc_month, char (&out)[kPathCapacity]) {
+    if (utc_year < kFirstYear || utc_year > kLastYear || utc_month < 1 || utc_month > 12) return false;
+    snprintf(out, sizeof(out), "%s/%04u/%02u", kQuarterRoot, static_cast<unsigned>(utc_year),
+             static_cast<unsigned>(utc_month));
+    return true;
 }
 
 RepairResult repairTail(DailyHistoryStorage &storage, const char *path, const char *header,
@@ -387,6 +415,30 @@ bool findSpanCut(const QuarterHourRow::SpanRow &row, size_t line_offset, void *c
 }
 
 } // namespace
+
+TreeRemoveResult removeFilesAfter(DailyHistoryStorage &storage, const char *dir, const char *after,
+                                  uint32_t &removed) {
+    removed = 0;
+    Entries entries;
+    switch (storage.listDir(dir, &collectEntry, &entries)) {
+        case DirListResult::Absent:
+            return TreeRemoveResult::Absent;
+        case DirListResult::Failed:
+            return TreeRemoveResult::Failed;
+        case DirListResult::Listed:
+            break;
+    }
+    for (size_t i = 0; i < entries.names.size(); ++i) {
+        if (entries.dirs[i] || strcmp(entries.names[i].c_str(), after) <= 0) continue;
+        const String child = String(dir) + "/" + entries.names[i];
+        if (!storage.removeFile(child.c_str())) {
+            LOGE(kTag, "could not remove %s", child.c_str());
+            return TreeRemoveResult::Failed;
+        }
+        ++removed;
+    }
+    return TreeRemoveResult::Removed;
+}
 
 TreeRemoveResult removeTree(DailyHistoryStorage &storage, const char *root) {
     Entries entries;

@@ -3,12 +3,33 @@
 
 #include "modules/StorageHealth.h"
 
+#include <string.h>
+
 namespace StorageHealth {
 namespace {
 
 constexpr uint32_t kHoursPerDay = 24;
+constexpr const char *kAutoDeleteName = "auto_delete";
+constexpr const char *kStopRecordingName = "stop_recording";
 
 } // namespace
+
+const char *fullActionName(FullAction action) {
+    return action == FullAction::StopRecording ? kStopRecordingName : kAutoDeleteName;
+}
+
+bool parseFullAction(const char *text, FullAction &out) {
+    if (!text) return false;
+    if (strcmp(text, kAutoDeleteName) == 0) {
+        out = FullAction::AutoDelete;
+        return true;
+    }
+    if (strcmp(text, kStopRecordingName) == 0) {
+        out = FullAction::StopRecording;
+        return true;
+    }
+    return false;
+}
 
 uint32_t daysLeft(uint64_t free_bytes, uint32_t bytes_per_day) {
     if (bytes_per_day == 0) return UINT32_MAX;

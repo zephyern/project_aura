@@ -182,7 +182,7 @@ void test_daily_csv_uses_the_upstream_format() {
 void test_second_pass_with_the_limit_matches_the_first() {
     writeQuarters(kNov8, kNov10 + 6 * kH);
     Rig rig;
-    rig.history.poll(static_cast<time_t>(kNov10 + 6 * kH), true); // rebuilds Nov 7 (partial) and Nov 8, Nov 9
+    rig.history.poll(static_cast<time_t>(kNov10 + 6 * kH), true, LongHistory::Space{}); // rebuilds Nov 7 (partial) and Nov 8, Nov 9
     size_t first_bytes = 0, second_bytes = 0;
     uint32_t limit = 0, end = 0;
     std::string first, second;
@@ -208,7 +208,7 @@ void test_clear_all_removes_every_group_and_the_old_daily_file() {
     g_root->write("/aura/history/daily.csv", kHeader);
     g_root->write("/aura/history/current_day.a.bin", "x");
     Rig rig;
-    rig.history.poll(static_cast<time_t>(kNov10 + 6 * kH), true);
+    rig.history.poll(static_cast<time_t>(kNov10 + 6 * kH), true, LongHistory::Space{});
     TEST_ASSERT_TRUE(g_root->exists(kHourly));
     TEST_ASSERT_TRUE(g_root->exists(kDays));
     char first[16] = {};
@@ -250,7 +250,7 @@ void test_clear_today_cuts_only_today_across_two_utc_files() {
     const uint32_t midnight = kNov9 + 5 * kH;
     writeQuarters(kNov8, now);
     Rig rig;
-    rig.history.poll(static_cast<time_t>(now), true);
+    rig.history.poll(static_cast<time_t>(now), true, LongHistory::Space{});
     const std::string before8 = g_root->read(kQ8);
 
     LongHistory::OpResults r;
@@ -267,7 +267,7 @@ void test_clear_today_cuts_only_today_across_two_utc_files() {
     TEST_ASSERT_EQUAL_UINT32(0, quarters(rig.sd, kQ10).size());
 
     // Summaries keep everything before midnight and are rebuilt up to it.
-    rig.history.poll(static_cast<time_t>(now), true);
+    rig.history.poll(static_cast<time_t>(now), true, LongHistory::Space{});
     const auto hours = spans(rig.sd, kHourly);
     TEST_ASSERT_EQUAL_UINT32(midnight, hours.back().end_epoch);
     TEST_ASSERT_EQUAL_UINT32(kNov8, hours.front().start_epoch);
@@ -285,6 +285,83 @@ void test_operations_refused_when_off() {
     TEST_ASSERT_TRUE(r.items.empty());
 }
 
+void test_card_full_auto_delete_removes_the_oldest_month_only() {
+    writeQuarters(kNov8 - 40U * 86400U, kNov8 - 38U * 86400U); // Sept 29 - 30
+    writeQuarters(kNov8, kNov10 + 6 * kH);
+    Rig rig;
+    const time_t now = static_cast<time_t>(kNov10 + 6 * kH);
+    rig.history.poll(now, true, LongHistory::Space{}); // prepares, rebuilds, measures the rate
+    LongHistory::Space full;
+    full.known = true;
+    full.free_bytes = 10; // less than one day
+    rig.history.poll(now, true, full);
+    TEST_ASSERT_EQUAL(static_cast<int>(StorageHealth::Kind::Full), static_cast<int>(rig.history.health().kind));
+    TEST_ASSERT_FALSE(g_root->exists("/aura/history/15min/2026/09"));
+    TEST_ASSERT_TRUE(g_root->exists("/aura/history/15min/2026/11/2026-11-08.csv"));
+    TEST_ASSERT_TRUE(g_root->exists(kHourly)); // summaries are never deleted
+    // Still full at the next reading; only the current month is left and it
+    // is never deleted, so recording stops.
+    full.free_bytes = 11;
+    rig.history.poll(now, true, full);
+    TEST_ASSERT_EQUAL(static_cast<int>(StorageHealth::Kind::RecordingStopped),
+                      static_cast<int>(rig.history.health().kind));
+    TEST_ASSERT_TRUE(g_root->exists("/aura/history/15min/2026/11/2026-11-10.csv"));
+    // Space again: recording resumes.
+    LongHistory::Space room;
+    room.known = true;
+    room.free_bytes = 1ULL << 40;
+    rig.history.poll(now, true, room);
+    TEST_ASSERT_EQUAL(static_cast<int>(StorageHealth::Kind::Ok), static_cast<int>(rig.history.health().kind));
+}
+
+void test_card_full_stop_recording_deletes_nothing() {
+    writeQuarters(kNov8 - 40U * 86400U, kNov8 - 38U * 86400U);
+    writeQuarters(kNov8, kNov10 + 6 * kH);
+    Rig rig;
+    rig.history.setFullAction(StorageHealth::FullAction::StopRecording);
+    const time_t now = static_cast<time_t>(kNov10 + 6 * kH);
+    rig.history.poll(now, true, LongHistory::Space{});
+    LongHistory::Space full;
+    full.known = true;
+    full.free_bytes = 10;
+    rig.history.poll(now, true, full);
+    TEST_ASSERT_EQUAL(static_cast<int>(StorageHealth::Kind::RecordingStopped),
+                      static_cast<int>(rig.history.health().kind));
+    TEST_ASSERT_TRUE(g_root->exists("/aura/history/15min/2026/09"));
+}
+
+void test_low_space_uses_the_measured_rate() {
+    writeQuarters(kNov8, kNov10 + 6 * kH);
+    Rig rig;
+    const time_t now = static_cast<time_t>(kNov10 + 6 * kH);
+    rig.history.poll(now, true, LongHistory::Space{});
+    const std::string nov9 = g_root->read("/aura/history/15min/2026/11/2026-11-09.csv");
+    LongHistory::Space space;
+    space.known = true;
+    space.free_bytes = static_cast<uint64_t>(nov9.size()) * 10U; // well under 30 days with summaries
+    rig.history.poll(now, true, space);
+    const StorageHealth::Status s = rig.history.health();
+    TEST_ASSERT_EQUAL(static_cast<int>(StorageHealth::Kind::LowSpace), static_cast<int>(s.kind));
+    TEST_ASSERT_TRUE(s.days_left >= 7 && s.days_left <= 10);
+}
+
+void test_clear_future_needs_a_trusted_clock_and_removes_only_the_future() {
+    writeQuarters(kNov8, kNov10 + 6 * kH);
+    writeQuarters(kNov10 + 400U * 86400U, kNov10 + 401U * 86400U); // clock once set ahead
+    Rig rig;
+    const time_t now = static_cast<time_t>(kNov10 + 6 * kH);
+    LongHistory::OpResults r;
+    rig.history.poll(now, false, LongHistory::Space{});
+    TEST_ASSERT_EQUAL(static_cast<int>(LongHistory::OpStatus::NoTime), static_cast<int>(rig.history.clearFuture(now, r)));
+    TEST_ASSERT_TRUE(g_root->exists("/aura/history/15min/2027"));
+    rig.history.poll(now, true, LongHistory::Space{});
+    TEST_ASSERT_EQUAL(static_cast<int>(LongHistory::OpStatus::Done), static_cast<int>(rig.history.clearFuture(now, r)));
+    TEST_ASSERT_TRUE(r.ok());
+    TEST_ASSERT_FALSE(g_root->exists("/aura/history/15min/2027/12"));
+    TEST_ASSERT_EQUAL(24, static_cast<int>(quarters(rig.sd, kQ10).size()));
+    TEST_ASSERT_EQUAL(96, static_cast<int>(quarters(rig.sd, kQ9).size()));
+}
+
 int main(int, char **) {
     UNITY_BEGIN();
     RUN_TEST(test_daily_csv_uses_the_upstream_format);
@@ -293,5 +370,9 @@ int main(int, char **) {
     RUN_TEST(test_failed_removal_is_reported);
     RUN_TEST(test_clear_today_cuts_only_today_across_two_utc_files);
     RUN_TEST(test_operations_refused_when_off);
+    RUN_TEST(test_card_full_auto_delete_removes_the_oldest_month_only);
+    RUN_TEST(test_card_full_stop_recording_deletes_nothing);
+    RUN_TEST(test_low_space_uses_the_measured_rate);
+    RUN_TEST(test_clear_future_needs_a_trusted_clock_and_removes_only_the_future);
     return UNITY_END();
 }

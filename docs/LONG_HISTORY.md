@@ -330,3 +330,37 @@ and either the full action is "stop recording" or there is nothing left to delet
   complete the rate is unknown and no low-space alert is shown.
 
 Host tests: `test/test_storage_health`.
+
+## Card full and history settings
+
+Two settings, both under `history` in the config and on the web page (System tab, SD
+history, `GET`/`POST /api/history/settings`; the POST needs both fields and refuses any
+other field):
+
+- `log_enabled` (default off): the long-term history log. It is started or stopped only
+  at boot, so the page says "Restart to start/stop the long-term history log." after a
+  change.
+- `full_action` (default `auto_delete`): what happens when the card is full (less than
+  one day's data fits, or a write failed for lack of space). Applied at once.
+  - `auto_delete` removes the oldest whole month of 15-minute files
+    (`15min/YYYY/MM`), never the current UTC month and never a summary, so the month,
+    year and lifetime charts keep their data. After a deletion nothing more is deleted
+    until the free-space reading changes or another row is written. When only the
+    current month is left, recording stops.
+  - `stop_recording` deletes nothing and stops recording.
+  - While stopped, five-minute intervals are not recorded and the verdict is
+    `RecordingStopped`; recording resumes by itself once a day's data fits again.
+  - If deleting the oldest month fails, the verdict is `WriteError` with the failure
+    kind, never `Full`.
+- Bytes per day for the storage verdict: the 15-minute files of the last 7 complete UTC
+  days are measured; an hourly or daily record is taken as one 15-minute row (the
+  measured mean) plus its 11-byte end time, not measured from the summary files.
+
+"Clear future-dated history" (`POST /api/history/future/clear`, shown only while the
+log runs) is for a clock that was once set ahead: it removes every 15-minute row that
+starts after now and every summary record that ends after now (later summary files go
+whole), then rebuilds. It refuses (409) unless the clock was trusted at the last poll,
+so a wrong clock can never delete real history.
+
+Host tests: `test/test_long_history`, `test/test_storage_manager_save`,
+`test/test_web_route_registry`, `scripts/tests/dashboard-sd-recovery.test.mjs`.

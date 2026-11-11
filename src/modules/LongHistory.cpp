@@ -12,6 +12,7 @@
 #include "core/LocalDate.h"
 #include "core/Logger.h"
 #include "modules/DailyExtremaHistory.h"
+#include "modules/ForwardOnlyGuard.h"
 #include "modules/LongHistoryFiles.h"
 
 namespace {
@@ -19,6 +20,23 @@ namespace {
 constexpr const char *kTag = "History";
 constexpr uint32_t kWebLockTimeoutMs = 5000;
 constexpr uint32_t kIntervalLockTimeoutMs = 1000;
+constexpr uint32_t kDaySeconds = 86400;
+constexpr uint32_t kQuartersPerDay = kDaySeconds / QuarterHourRow::kQuarterSeconds;
+// A summary record is a 15-minute row plus ",<end_utc>" (10 digits).
+constexpr uint32_t kSpanExtraBytes = 11;
+
+uint64_t packHealth(const StorageHealth::Status &s) {
+    return static_cast<uint64_t>(s.kind) | (static_cast<uint64_t>(s.failure_kind) << 8) |
+           (static_cast<uint64_t>(s.days_left) << 32);
+}
+
+StorageHealth::Status unpackHealth(uint64_t v) {
+    StorageHealth::Status s;
+    s.kind = static_cast<StorageHealth::Kind>(v & 0xFFU);
+    s.failure_kind = static_cast<DailyStorageFailureKind>((v >> 8) & 0xFFU);
+    s.days_left = static_cast<uint32_t>(v >> 32);
+    return s;
+}
 
 // The local day a daily record belongs to: its middle. A record is one local
 // day (23-25 hours) in the zone in effect when it was written, so its middle
@@ -204,6 +222,7 @@ void LongHistory::setEnabled(bool enabled) {
 
 void LongHistory::intervalThunk(const ChartsHistory::CompletedInterval &interval, void *context) {
     LongHistory &self = *static_cast<LongHistory *>(context);
+    if (self.stopped_.load()) return; // card full, recording stopped (alert bar says so)
     Lock lock(self, kIntervalLockTimeoutMs);
     if (!lock.locked()) {
         LOGE(kTag, "long-term history busy; five-minute interval %u not recorded",
@@ -213,14 +232,25 @@ void LongHistory::intervalThunk(const ChartsHistory::CompletedInterval &interval
     self.logger_.onInterval(interval);
 }
 
-void LongHistory::poll(time_t now, bool time_trusted) {
+void LongHistory::poll(time_t now, bool time_trusted, const Space &space) {
+    time_trusted_.store(time_trusted);
     Lock lock(*this, 0); // a web operation holds it only briefly; try again next pass
-    if (!lock.locked() || op_running_ || !enabled_) return;
+    if (!lock.locked() || op_running_) return;
+    if (!enabled_) {
+        publishHealth(StorageHealth::Status{});
+        return;
+    }
     logger_.poll(now, time_trusted);
     const bool ready = logger_.prepared();
     hourly_.poll(now, time_trusted, ready);
     daily_.poll(now, time_trusted, ready);
     weekly_.poll(now, time_trusted, ready);
+    updateLadder();
+    if (time_trusted) measureRate(now);
+    enforceSpace(now, space);
+}
+
+void LongHistory::updateLadder() {
     const SummaryWriter::Status weekly = weekly_.status();
     if (weekly.state != SummaryWriter::State::Recording) return;
     const uint32_t seen = weekly.records_written + weekly.records_rebuilt;
@@ -231,6 +261,145 @@ void LongHistory::poll(time_t now, bool time_trusted) {
         LOGE(kTag, "weekly ladder update failed (%u)", static_cast<unsigned>(storage_.lastFailureKind()));
     }
 }
+
+void LongHistory::measureRate(time_t now) {
+    uint32_t today = 0;
+    if (!LocalDate::utcDayKey(now, today) || today == rate_day_) return;
+    rate_day_ = today;
+    uint32_t sizes[StorageHealth::kRateDays] = {};
+    size_t days = 0;
+    for (size_t back = 1; back <= StorageHealth::kRateDays; ++back) {
+        uint32_t key = 0;
+        char path[LongHistoryFiles::kPathCapacity];
+        const time_t day = now - static_cast<time_t>(back * kDaySeconds);
+        if (!LocalDate::utcDayKey(day, key) || !LongHistoryFiles::quarterFilePath(key, path)) continue;
+        bool exists = false;
+        size_t size = 0;
+        if (!storage_.fileInfo(path, exists, size) || !exists || size == 0) continue;
+        sizes[days++] = static_cast<uint32_t>(size);
+    }
+    StorageHealth::RateSample sample;
+    sample.quarter_file_bytes = sizes;
+    sample.days = days;
+    if (days != 0) {
+        uint64_t total = 0;
+        for (size_t i = 0; i < days; ++i) total += sizes[i];
+        const uint32_t row_bytes = static_cast<uint32_t>(total / days / kQuartersPerDay);
+        sample.hourly_record_bytes = row_bytes + kSpanExtraBytes;
+        sample.daily_record_bytes = row_bytes + kSpanExtraBytes;
+    }
+    bytes_per_day_ = StorageHealth::bytesPerDay(sample);
+}
+
+StorageHealth::Inputs LongHistory::healthInputs(const Space &space) const {
+    StorageHealth::Inputs in;
+    in.log_enabled = true;
+    const QuarterHourLogger::Status q = logger_.status();
+    in.card_ready = storage_.isReady() && q.state != QuarterHourLogger::State::NoCard;
+    if (q.state == QuarterHourLogger::State::WriteError) {
+        in.write_error = true;
+        in.failure_kind = q.failure_kind;
+    }
+    const SummaryWriter *writers[] = {&hourly_, &daily_, &weekly_};
+    for (const SummaryWriter *w : writers) {
+        const SummaryWriter::Status s = w->status();
+        if (!in.write_error && s.state == SummaryWriter::State::WriteError) {
+            in.write_error = true;
+            in.failure_kind = s.failure_kind;
+        }
+    }
+    // Recording stopped on a "no space" error: nothing is written while
+    // stopped, so the error cannot clear itself; trust the space reading.
+    if (stopped_.load() && in.write_error && in.failure_kind == DailyStorageFailureKind::NoSpace &&
+        space.known && bytes_per_day_ != 0 && space.free_bytes >= bytes_per_day_) {
+        in.write_error = false;
+        in.failure_kind = DailyStorageFailureKind::None;
+    }
+    in.clock_behind = q.state == QuarterHourLogger::State::ClockBehind;
+    in.free_bytes = space.free_bytes;
+    in.bytes_per_day = space.known ? bytes_per_day_ : 0;
+    in.full_action = full_action_.load();
+    in.nothing_left_to_delete = nothing_left_;
+    return in;
+}
+
+LongHistory::DeleteResult LongHistory::deleteOldestMonth(time_t now) {
+    uint32_t year = 0, month = 0, today = 0;
+    switch (LongHistoryFiles::findOldestQuarterMonth(storage_, year, month)) {
+        case LongHistoryFiles::FindResult::Failed:
+            return DeleteResult::Failed;
+        case LongHistoryFiles::FindResult::None:
+            return DeleteResult::NothingLeft;
+        case LongHistoryFiles::FindResult::Found:
+            break;
+    }
+    if (!LocalDate::utcDayKey(now, today)) return DeleteResult::Failed;
+    if (year == today / 10000U && month == (today / 100U) % 100U) return DeleteResult::NothingLeft;
+    char path[LongHistoryFiles::kPathCapacity];
+    if (!LongHistoryFiles::quarterMonthPath(year, month, path)) return DeleteResult::Failed;
+    if (LongHistoryFiles::removeTree(storage_, path) == LongHistoryFiles::TreeRemoveResult::Failed) {
+        return DeleteResult::Failed;
+    }
+    char year_path[LongHistoryFiles::kPathCapacity];
+    snprintf(year_path, sizeof(year_path), "%s/%04u", LongHistoryFiles::kQuarterRoot, static_cast<unsigned>(year));
+    if (storage_.removeEmptyDir(year_path) == DirRemoveResult::Failed) return DeleteResult::Failed;
+    LOGW(kTag, "SD card full: deleted the 15-minute detail of %04u-%02u (summaries kept)",
+         static_cast<unsigned>(year), static_cast<unsigned>(month));
+    return DeleteResult::Deleted;
+}
+
+void LongHistory::enforceSpace(time_t now, const Space &space) {
+    StorageHealth::Inputs in = healthInputs(space);
+    StorageHealth::Status status = StorageHealth::evaluate(in);
+    const uint32_t rows = logger_.status().rows_written;
+    if (status.kind == StorageHealth::Kind::Full && full_action_.load() == StorageHealth::FullAction::AutoDelete &&
+        (rows != rows_at_delete_ || space.free_bytes != free_at_delete_)) {
+        // After a deletion, wait for a new free-space reading (or a written
+        // row) so the card manager catches up before anything more goes.
+        rows_at_delete_ = rows;
+        free_at_delete_ = space.free_bytes;
+        switch (deleteOldestMonth(now)) {
+            case DeleteResult::Deleted:
+                delete_failure_ = DailyStorageFailureKind::None;
+                break;
+            case DeleteResult::NothingLeft:
+                nothing_left_ = true;
+                in.nothing_left_to_delete = true;
+                status = StorageHealth::evaluate(in);
+                break;
+            case DeleteResult::Failed:
+                delete_failure_ = storage_.lastFailureKind();
+                if (delete_failure_ == DailyStorageFailureKind::None) delete_failure_ = DailyStorageFailureKind::Unknown;
+                LOGE(kTag, "SD card full: could not delete old 15-minute detail (%u)",
+                     static_cast<unsigned>(delete_failure_));
+                break;
+        }
+    }
+    if (status.kind != StorageHealth::Kind::Full) delete_failure_ = DailyStorageFailureKind::None;
+    if (delete_failure_ != DailyStorageFailureKind::None) {
+        // Full, but the oldest detail could not be deleted: say so, never
+        // "deleting oldest detail".
+        status.kind = StorageHealth::Kind::WriteError;
+        status.failure_kind = delete_failure_;
+    }
+    if (status.kind != StorageHealth::Kind::Full && status.kind != StorageHealth::Kind::RecordingStopped) {
+        nothing_left_ = false; // space again
+    }
+    const bool stop = status.kind == StorageHealth::Kind::RecordingStopped;
+    if (stop != stopped_.load()) {
+        if (stop) {
+            LOGE(kTag, "SD card full: long-term recording stopped");
+        } else {
+            LOGI(kTag, "SD card has space again: long-term recording resumed");
+        }
+        stopped_.store(stop);
+    }
+    publishHealth(status);
+}
+
+void LongHistory::publishHealth(const StorageHealth::Status &status) { health_.store(packHealth(status)); }
+
+StorageHealth::Status LongHistory::health() const { return unpackHealth(health_.load()); }
 
 LongHistory::CsvResult LongHistory::dailyCsv(bool units_c, uint32_t end_limit, TextSink sink, void *context,
                                              size_t &bytes, uint32_t &last_end) const {
@@ -418,5 +587,54 @@ LongHistory::OpStatus LongHistory::clearToday(time_t now, OpResults &results) {
     }
     endOp();
     if (!results.ok()) LOGE(kTag, "delete today: some files could not be cut");
+    return OpStatus::Done;
+}
+
+LongHistory::OpStatus LongHistory::clearFuture(time_t now, OpResults &results) {
+    results = OpResults{};
+    uint32_t utc_day = 0, local_day = 0;
+    if (!time_trusted_.load() || !LocalDate::utcDayKey(now, utc_day) || !LocalDate::localDayKey(now, local_day)) {
+        return OpStatus::NoTime;
+    }
+    const OpStatus begun = beginOp();
+    if (begun != OpStatus::Done) return begun;
+    const uint32_t cut = static_cast<uint32_t>(now);
+    ForwardOnlyGuard::ClearStats stats;
+    const bool quarter_ok = ForwardOnlyGuard::clearFutureQuarterRows(storage_, now, stats) ==
+                            ForwardOnlyGuard::ClearResult::Cleared;
+    results.add(LongHistoryFiles::kQuarterRoot, stats.files_removed + stats.rows_removed != 0,
+                stats.files_removed + stats.rows_removed != 0, quarter_ok);
+    // Later summary files go whole; the current one is cut at its first
+    // record that ends after now.
+    char hourly[LongHistoryFiles::kPathCapacity], daily[LongHistoryFiles::kPathCapacity];
+    const bool paths = LongHistoryFiles::hourlyFilePath(utc_day / 10000U, (utc_day / 100U) % 100U, hourly) &&
+                       LongHistoryFiles::dailyFilePath(local_day / 10000U, daily);
+    if (!paths) {
+        results.add("/aura/history", false, false, false);
+    } else {
+        const std::pair<const char *, const char *> dirs[] = {{LongHistoryFiles::kHourlyRoot, hourly},
+                                                              {LongHistoryFiles::kDailyRoot, daily}};
+        for (const auto &d : dirs) {
+            const char *name = strrchr(d.second, '/') + 1;
+            uint32_t removed = 0;
+            const LongHistoryFiles::TreeRemoveResult r =
+                LongHistoryFiles::removeFilesAfter(storage_, d.first, name, removed);
+            if (r == LongHistoryFiles::TreeRemoveResult::Absent) continue;
+            results.add(d.first, removed != 0, removed != 0, r != LongHistoryFiles::TreeRemoveResult::Failed);
+        }
+        std::vector<String> files = {String(hourly), String(daily)};
+        for (uint32_t weeks = 1; weeks <= WeeklySummary::kMaxLevelWeeks; weeks *= 2) {
+            char path[LongHistoryFiles::kPathCapacity];
+            if (LongHistoryFiles::weeklyFilePath(weeks, path)) files.emplace_back(path);
+        }
+        for (const String &f : files) {
+            const LongHistoryFiles::CutResult r = LongHistoryFiles::cutRowsFrom(storage_, f.c_str(), true, cut);
+            if (r == LongHistoryFiles::CutResult::Absent) continue;
+            results.add(f.c_str(), true, r == LongHistoryFiles::CutResult::Cut,
+                        r != LongHistoryFiles::CutResult::Failed);
+        }
+    }
+    endOp();
+    if (!results.ok()) LOGE(kTag, "clear future-dated history: some files could not be changed");
     return OpStatus::Done;
 }
