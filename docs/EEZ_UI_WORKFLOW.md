@@ -15,7 +15,8 @@ python tools/eez_ui_postprocess.py --check
 The first command applies the Project Aura generated-UI contract. The second
 command is a non-mutating verification and must report that the contract is
 already satisfied. The native IDF build also invokes the same post-processor before compilation.
-Firmware on `main` is built with `scripts/build_idf.ps1`.
+Firmware on `main` is built with `scripts/build_idf.ps1` (`scripts/build_idf.sh`
+on Linux).
 The canonical project is `ui/aura-lvgl.eez-project`, using LVGL 9.5.0.
 The obsolete firmware-trust chip and its label have been removed from the source
 and generated UI. Release-package signature verification remains separate.
@@ -114,6 +115,12 @@ postprocess or manual edit of generated C is needed. For a headless build,
 can build an immutable, self-contained copy of the canonical project into a
 staging `src/ui`; keep embedded fonts/bitmaps and review the generated diff.
 The builder does not regenerate the separately maintained font C subsets.
+On Linux, the same build runs from the extracted 0.27.1 AppImage
+(`EEZ-Studio-0.27.1.AppImage --appimage-extract`) under a virtual display:
+
+```bash
+xvfb-run -a "<extracted>/EEZ Studio" --no-sandbox --build-project <project> --user-data-dir=<temporary-profile>
+```
 
 The generated `img_page_boot_logo_new_map` must contain 273,288 bytes of
 RGB565, SHA-256
