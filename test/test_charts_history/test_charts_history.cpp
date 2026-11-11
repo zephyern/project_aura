@@ -213,6 +213,63 @@ void test_sen0321_history_summary_export_and_model_change() {
     d.optional_gas_type=5; at(301); h.update(d,s,false,true,ChartsHistory::metricBit(GAS));
     float v; bool valid; h.metricValueFromOldest(0,GAS,v,valid); TEST_ASSERT_FALSE(valid);
 }
+struct Published {
+    int calls = 0;
+    ChartsHistory::CompletedInterval last{};
+    static void onInterval(const ChartsHistory::CompletedInterval &i, void *ctx) {
+        auto &p = *static_cast<Published *>(ctx); ++p.calls; p.last = i;
+    }
+};
+void otherListener(const ChartsHistory::CompletedInterval &, void *) {}
+void test_completed_interval_publishes_exact_sum_and_low_high_seconds() {
+    StorageManager s; s.begin(); ChartsHistory h; h.load(s); Published p;
+    TEST_ASSERT_TRUE(h.setIntervalListener(&Published::onInterval, &p));
+    observe(h,s,0,20.1f); observe(h,s,10,80.3f); observe(h,s,20,80.3f);
+    observe(h,s,40,10.7f); observe(h,s,50,10.7f); observe(h,s,60,33.0f);
+    TEST_ASSERT_EQUAL(0,p.calls);
+    observe(h,s,300,0,0);
+    TEST_ASSERT_EQUAL(1,p.calls);
+    const auto &i=p.last;
+    TEST_ASSERT_EQUAL(base_epoch,i.entry.start_epoch);
+    TEST_ASSERT_EQUAL(ChartsHistory::Summary,i.entry.kind);
+    TEST_ASSERT_EQUAL(6,i.entry.samples[TEMP]);
+    const double expected=static_cast<double>(20.1f)+80.3f+80.3f+10.7f+10.7f+33.0f;
+    TEST_ASSERT_TRUE(expected==i.sums[TEMP]);
+    TEST_ASSERT_EQUAL_FLOAT(10.7f,i.entry.minimum[TEMP]); TEST_ASSERT_EQUAL(40,i.min_second[TEMP]);
+    TEST_ASSERT_EQUAL_FLOAT(80.3f,i.entry.maximum[TEMP]); TEST_ASSERT_EQUAL(10,i.max_second[TEMP]);
+    TEST_ASSERT_EQUAL(0,i.entry.samples[CO2]); TEST_ASSERT_EQUAL(0,i.max_second[CO2]);
+    // The persisted ring entry is the same record.
+    TEST_ASSERT_EQUAL_FLOAT(i.entry.values[TEMP],entry(h).values[TEMP]);
+    // A fresh interval starts with fresh low/high seconds.
+    observe(h,s,305,5); observe(h,s,600,0,0);
+    TEST_ASSERT_EQUAL(2,p.calls); TEST_ASSERT_EQUAL(5,p.last.min_second[TEMP]); TEST_ASSERT_EQUAL(5,p.last.max_second[TEMP]);
+}
+void test_gaps_untrusted_and_rolled_back_intervals_are_not_published() {
+    StorageManager s; s.begin(); ChartsHistory h; h.load(s); Published p;
+    TEST_ASSERT_TRUE(h.setIntervalListener(&Published::onInterval, &p));
+    h.update(temp(20),s,false,false,temp_mask); at(300); h.update(temp(30),s,false,false,temp_mask);
+    TEST_ASSERT_EQUAL(1,h.count()); TEST_ASSERT_EQUAL(0,p.calls); // untrusted
+    at(301); h.update(temp(40),s,false,true,temp_mask); observe(h,s,1200,0,0);
+    TEST_ASSERT_EQUAL(1,p.calls); TEST_ASSERT_EQUAL(base_epoch+300,p.last.entry.start_epoch);
+    observe(h,s,1500,0,0); // the interval at 1200 had no samples: a gap
+    TEST_ASSERT_EQUAL(1,p.calls);
+    // Clock moved back: the unfinished interval is discarded and sampling
+    // holds until the clock catches up, so nothing is published twice.
+    observe(h,s,1510,22); observe(h,s,1400,99); observe(h,s,1505,98);
+    observe(h,s,1520,23); observe(h,s,1800,0,0);
+    TEST_ASSERT_EQUAL(2,p.calls); TEST_ASSERT_EQUAL(base_epoch+1500,p.last.entry.start_epoch);
+    TEST_ASSERT_EQUAL(1,p.last.entry.samples[TEMP]); TEST_ASSERT_EQUAL_FLOAT(23,p.last.entry.minimum[TEMP]);
+    TEST_ASSERT_EQUAL(20,p.last.min_second[TEMP]);
+}
+void test_only_one_interval_listener_can_be_registered() {
+    ChartsHistory h; Published p, q;
+    TEST_ASSERT_TRUE(h.setIntervalListener(&Published::onInterval, &p));
+    TEST_ASSERT_TRUE(h.setIntervalListener(&Published::onInterval, &p)); // same pair again
+    TEST_ASSERT_FALSE(h.setIntervalListener(&Published::onInterval, &q)); // same function, other object
+    TEST_ASSERT_FALSE(h.setIntervalListener(&otherListener, nullptr));
+    TEST_ASSERT_TRUE(h.setIntervalListener(nullptr, nullptr));
+    TEST_ASSERT_TRUE(h.setIntervalListener(&otherListener, nullptr));
+}
 int main() {
     UNITY_BEGIN();
     RUN_TEST(test_sen0321_history_summary_export_and_model_change);
@@ -232,5 +289,8 @@ int main() {
     RUN_TEST(test_clear_removes_legacy_and_segment_history);
     RUN_TEST(test_chart_and_bounded_export_share_exact_summary_values);
     RUN_TEST(test_snapshot_remains_one_generation_during_concurrent_update);
+    RUN_TEST(test_completed_interval_publishes_exact_sum_and_low_high_seconds);
+    RUN_TEST(test_gaps_untrusted_and_rolled_back_intervals_are_not_published);
+    RUN_TEST(test_only_one_interval_listener_can_be_registered);
     return UNITY_END();
 }
