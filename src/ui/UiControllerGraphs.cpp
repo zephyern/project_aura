@@ -1150,6 +1150,9 @@ bool UiController::should_show_threshold_dots() const {
     if (info_sensor == INFO_TEMP) {
         return !temp_graph_mode_;
     }
+    if (info_sensor == INFO_OUTDOOR) {
+        return false;  // always a chart
+    }
     if (info_sensor == INFO_RH) {
         return !rh_graph_mode_;
     }
@@ -1191,8 +1194,13 @@ void UiController::sync_threshold_dots_visibility() {
 }
 
 void UiController::set_temperature_info_mode(bool graph_mode) {
-    const bool mode_changed = (temp_graph_mode_ != graph_mode);
-    temp_graph_mode_ = graph_mode;
+    // The outdoor chart shares these widgets and is always a chart; it leaves
+    // the indoor text/graph choice (temp_graph_mode_) as it was.
+    const bool outdoor = info_sensor == INFO_OUTDOOR;
+    const bool shown = outdoor || graph_mode;
+    const bool mode_changed = (temp_chart_shown_ != shown) || (!outdoor && temp_graph_mode_ != graph_mode);
+    if (!outdoor) temp_graph_mode_ = graph_mode;
+    temp_chart_shown_ = shown;
     if (mode_changed) {
         invalidate_active_graph_refresh_cache();
     }
@@ -1218,8 +1226,8 @@ void UiController::set_temperature_info_mode(bool graph_mode) {
     if (objects.btn_back_1) {
         lv_obj_move_foreground(objects.btn_back_1);
     }
-    set_visible(objects.temperature_info_thresholds, !graph_mode);
-    set_visible(objects.temperature_info_graph, graph_mode);
+    set_visible(objects.temperature_info_thresholds, !shown);
+    set_visible(objects.temperature_info_graph, shown);
     sync_threshold_dots_visibility();
 
     sync_info_graph_button_state();
@@ -1635,6 +1643,8 @@ void UiController::set_pressure_info_mode(bool graph_mode) {
     set_visible(objects.pressure_info_graph, graph_mode && (show_3h || show_24h));
     set_visible(objects.btn_3h_pressure_info, !graph_mode);
     set_visible(objects.btn_24h_pressure_info, !graph_mode);
+    // The weather layout's 24-hour line sits where the chart is drawn.
+    set_visible(objects.label_pressure_info_24h, weather_layout_on_ && !graph_mode);
     sync_threshold_dots_visibility();
     set_checked(objects.btn_pressure_range_1h, pressure_graph_range_ == TEMP_GRAPH_RANGE_1H);
     set_checked(objects.btn_pressure_range_3h, pressure_graph_range_ == TEMP_GRAPH_RANGE_3H);

@@ -46,7 +46,26 @@ value is dropped.
 | HTTP 401 | Bad API key |
 | Any other HTTP error (including 429) | Weather service error |
 | Answer is not JSON, is cut off, or lacks `main.temp` / `dt` | Weather service error |
-| Turned on without a key or a place | Not set up |
+| Turned on without a key or a place | Set up on web page |
+
+## On the screen
+
+Turning the setting on rearranges the main screen; turning it off puts back
+the original layout exactly (`src/ui/UiWeatherLayout.cpp`).
+
+- Row 1: CO2 · indoor temperature · **outdoor temperature** · humidity (moved
+  one slot right).
+- Row 2: pressure in one slot · the dew point / mixing ratio card (moved into
+  the freed slot) · PM0.5 · PM2.5 · PM10.
+- The one-slot pressure card shows the value, the unit and the 3-hour change.
+  The 24-hour change is shown on the pressure info screen instead.
+- The outdoor card shows the temperature in the indoor temperature unit, `---`
+  before the first check, or the reason a check failed (table above). Tapping
+  it opens its chart, with the same ranges as the indoor temperature chart
+  (1h/3h/24h, and month/year/lifetime when those are on); both charts share
+  the chosen range. The outdoor chart has no comfort zones.
+- The switch is on the web page only for now; the device Settings screen has
+  no free slot.
 
 ## History
 

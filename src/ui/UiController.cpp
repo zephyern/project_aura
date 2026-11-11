@@ -353,6 +353,7 @@ UiController::UiController(const UiContext &context)
       chartsHistory(context.chartsHistory),
       dailyExtremaHistory(context.dailyExtremaHistory),
       longHistory(context.longHistory),
+      weatherManager(context.weatherManager),
       timeManager(context.timeManager),
       themeManager(context.themeManager),
       backlightManager(context.backlightManager),
@@ -3223,6 +3224,7 @@ void UiController::update_ui() {
 
     update_main_screen_background_alert();
     update_sensor_cards(aq, gas_warmup, show_co2_bar);
+    update_outdoor_card();
 }
 
 void UiController::update_settings_header() {

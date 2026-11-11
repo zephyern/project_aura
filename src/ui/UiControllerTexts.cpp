@@ -57,6 +57,8 @@ void UiController::update_main_texts() {
     if (objects.label_btn_settings_1) safe_label_set_text(objects.label_btn_settings_1, UiText::LabelSettingsButton());
     if (objects.label_temp_title_1) safe_label_set_text(objects.label_temp_title_1, UiText::LabelTemperatureTitle());
     if (objects.label_pressure_title_1) safe_label_set_text(objects.label_pressure_title_1, UiText::LabelPressureTitle());
+    if (objects.label_outdoor_title) safe_label_set_text(objects.label_outdoor_title, UiText::LabelOutdoorCardTitle());
+    outdoor_card_drawn_ = false;  // message text follows the language
     if (objects.label_pressure_set_altitude) safe_label_set_text(objects.label_pressure_set_altitude, UiText::LabelPressureSetAltitude());
     if (objects.label_time_title_2) safe_label_set_text(objects.label_time_title_2, UiText::LabelTimeCard());
     if (objects.label_voc_warmup_1) safe_label_set_text(objects.label_voc_warmup_1, UiText::LabelWarmup());
