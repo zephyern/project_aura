@@ -364,3 +364,33 @@ so a wrong clock can never delete real history.
 
 Host tests: `test/test_long_history`, `test/test_storage_manager_save`,
 `test/test_web_route_registry`, `scripts/tests/dashboard-sd-recovery.test.mjs`.
+
+## Alert-bar messages
+
+While the long-term history log is on, the storage verdict is one more line of the alert
+bar on the main screen, rotated with the sensor messages every 5 seconds
+(`src/ui/StorageStatusMessage.{h,cpp}`, shown by `UiController::update_status_message`):
+
+| Verdict | Text |
+|---|---|
+| `NoCard` | No SD card – history off |
+| `LowSpace` | SD card: about N days left |
+| `Full` | SD card full – deleting oldest detail |
+| `RecordingStopped` | SD card full – recording stopped |
+| `ClockBehind` | Clock behind – recording paused |
+| `WriteError` | SD card error – history not saved |
+
+`Off` and `Ok` show nothing. When deleting the oldest detail fails, the verdict is
+`WriteError`, never "deleting oldest detail". The line has no severity: it does not
+change the header colour and does not wake the backlight. With no sensor message it
+replaces "Fresh Air - All Good", as any single message does.
+
+The texts are in all 11 UI languages (`src/ui/strings/UiStrings.*.inc`, keys
+`MsgStorage*`); the 10 non-English ones are machine translations awaiting review. The
+en dash is in `ui_font_jet_reg_14` and `ui_font_jet_reg_18`; the Chinese and Japanese
+subsets were regenerated with `tools/generate_ui_font_subset.py`, keeping every glyph
+they had and adding those of the new texts, and `tools/check_ui_font_coverage.py`
+passes. Noto Sans JP is not in the repo: the Regular instance (`wght=400`) of Google
+Fonts' `NotoSansJP[wght].ttf` reproduces the committed subsets' glyph data exactly.
+
+Host tests: `test/test_storage_status_message`.
