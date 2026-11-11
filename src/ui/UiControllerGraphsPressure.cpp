@@ -100,6 +100,7 @@ void UiController::update_pressure_info_graph() {
     const GraphSeriesStats stats = populate_info_chart_series(objects.chart_pressure_info,
                                                               series,
                                                               points,
+                                                              pressure_graph_range_,
                                                               static_cast<int>(ChartsHistory::METRIC_PRESSURE),
                                                               point_scale,
                                                               false,

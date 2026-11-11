@@ -277,6 +277,39 @@ void test_clear_today_cuts_only_today_across_two_utc_files() {
     TEST_ASSERT_FALSE(rig.history.currentDay(key, samples)); // today is empty again
 }
 
+std::vector<QuarterHourRow::SpanRow> g_chart;
+void collectChart(const QuarterHourRow::SpanRow &row, void *) { g_chart.push_back(row); }
+
+void test_hourly_chart_reads_the_range_and_the_hour_in_progress() {
+    writeQuarters(kNov8, kNov10 + 6 * kH);
+    Rig rig;
+    rig.history.poll(static_cast<time_t>(kNov10 + 6 * kH), true, LongHistory::Space{});
+    g_chart.clear();
+    TEST_ASSERT_EQUAL(static_cast<int>(LongHistory::ChartRead::Read),
+                      static_cast<int>(rig.history.hourlyChart(kNov9, kNov10, &collectChart, nullptr)));
+    TEST_ASSERT_EQUAL_UINT32(24, g_chart.size());
+    for (size_t i = 0; i < g_chart.size(); ++i) {
+        TEST_ASSERT_EQUAL_UINT32(kNov9 + i * kH, g_chart[i].start_epoch);
+        TEST_ASSERT_EQUAL_UINT32(12, g_chart[i].metrics[TEMP].count);
+    }
+    // Today: the closed hours plus the one still open, each exactly once.
+    g_chart.clear();
+    TEST_ASSERT_EQUAL(static_cast<int>(LongHistory::ChartRead::Read),
+                      static_cast<int>(rig.history.hourlyChart(kNov10, kNov10 + 24 * kH, &collectChart, nullptr)));
+    TEST_ASSERT_EQUAL_UINT32(6, g_chart.size());
+    TEST_ASSERT_EQUAL_UINT32(kNov10 + 5 * kH, g_chart.back().start_epoch);
+    uint32_t first = 0;
+    TEST_ASSERT_TRUE(rig.history.firstDayKey(first));
+    TEST_ASSERT_EQUAL_UINT32(20261107, first);
+}
+
+void test_chart_reads_refused_when_off() {
+    Rig rig;
+    rig.history.setEnabled(false);
+    TEST_ASSERT_EQUAL(static_cast<int>(LongHistory::ChartRead::Off),
+                      static_cast<int>(rig.history.hourlyChart(kNov9, kNov10, &collectChart, nullptr)));
+}
+
 void test_operations_refused_when_off() {
     Rig rig;
     rig.history.setEnabled(false);
@@ -370,6 +403,8 @@ int main(int, char **) {
     RUN_TEST(test_failed_removal_is_reported);
     RUN_TEST(test_clear_today_cuts_only_today_across_two_utc_files);
     RUN_TEST(test_operations_refused_when_off);
+    RUN_TEST(test_hourly_chart_reads_the_range_and_the_hour_in_progress);
+    RUN_TEST(test_chart_reads_refused_when_off);
     RUN_TEST(test_card_full_auto_delete_removes_the_oldest_month_only);
     RUN_TEST(test_card_full_stop_recording_deletes_nothing);
     RUN_TEST(test_low_space_uses_the_measured_rate);

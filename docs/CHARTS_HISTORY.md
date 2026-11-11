@@ -17,6 +17,7 @@ saver and the web API all walk that list, so a new setting is one new row there.
 | Key | Default | What it turns on |
 | --- | --- | --- |
 | `band_enabled` | `false` | Faded min/max band on the 1h/3h/24h charts |
+| `month_enabled` | `false` | Month range on every sensor chart |
 
 - A key missing from the stored config keeps its default (off), like every other setting.
 - `StorageManager::saveChartsSettings` saves the whole section; when the save fails it puts
@@ -70,7 +71,9 @@ How it is built:
   `draw_series_line`: `x = (w * i) / (count - 1)`, values clamped to the axis range), joins
   neighbouring points by straight lines like the chart line, takes the union of all spans
   that fall in the same pixel column, and merges equal neighbouring columns into one
-  rectangle. It reports `Drawn`, `Empty`, `BadFrame` or `BadPoint`; the UI logs the last two
+  rectangle. Band points may lie beyond the line's first or last point (the Month view's
+  hourly band reaches past the middle of the first and last three-hour slot); the band is
+  cut at the chart's first and last pixel column, as LVGL clips the line. It reports `Drawn`, `Empty`, `BadFrame` or `BadPoint`; the UI logs the last two
   as an error, once per chart refresh.
 - `UiController` keeps one transparent overlay object, placed directly below the visible
   chart (above the zone colours, below the chart's own background tint, grid and line) and
@@ -100,3 +103,62 @@ opacity may need tuning after a look on a device.
 - Range-area series in other libraries (e.g. LightningChart's `AreaRangeSeries`,
   <https://lightningchart.com/js-charts/docs/features/xy/area-range/>): the right model,
   but not available for LVGL/C, so the small `ChartBand` geometry above implements it.
+
+## Month range (`month_enabled`)
+
+With the setting on, every range group on the info screen (all twelve sensor charts) gets a
+fourth button, **Month**, after 24h. Month shows one local calendar month:
+
+- **Line:** one point per three hours, the sample-weighted mean of the three hourly
+  summaries in that slot (`HistoryAggregates::combine`, the same merge the history files
+  use, so it is the exact mean of every reading, not a mean of means).
+- **Band:** one point per hour, from the lowest to the highest reading of that hour. The band
+  is part of the Month view and is drawn whatever `band_enabled` says (that setting is about
+  the five-minute charts).
+- **Data:** the hourly files (`/aura/history/hourly/YYYY-MM.csv`, UTC hours) through
+  `LongHistory::hourlyChart`, which takes the long-term history lock, reads every hour that
+  starts inside the local month with `HourlySummary::readRange` (it already crosses the
+  UTC month files), then adds the hour still in progress. No second reader, no copy of the
+  file logic.
+- **Header:** the sensor name is replaced by the month ("October 2026", from the language's
+  template and month names) between ‹ and › buttons. ‹ stops at the month of the oldest
+  record (`LongHistory::firstDayKey`), › stops at the current month: there is no future
+  month. An arrow that cannot move is hidden. A title too long for the space scrolls.
+- **Time labels:** the day of the month under each of the seven ticks.
+- **Messages instead of an empty chart:** "Long-term history is off", "History could not
+  be read" (after the read error is logged) and "Clock not set" (no trusted time, so no
+  local month). While a web operation holds the history for a moment, the chart keeps what
+  it had and retries at the next refresh.
+- **Reading cost:** the month is read once and kept; it is read again only when the sensor,
+  the month or (for the current month) the hour changes, never on the five-second refresh.
+  The optional gas chart shows only records of the gas sensor fitted now.
+- Turning the setting off while Month is on screen returns that chart to 3h.
+
+Grids are anchored at local midnight on the 1st (`ChartPeriod::localMonthBounds`, which
+asks `mktime` and so follows daylight saving time: a fall-back month has one hour more).
+Each hourly record goes to the slot that holds its middle (`LongChartSeries::Builder`), so
+in a zone with a half-hour offset the first and last slot of a month may each miss one
+hour.
+
+How it is built:
+
+- `src/ui/ChartPeriod.{h,cpp}`: month numbering, the ‹ › limits (`Navigator`), local month
+  and year bounds, and the title template (`{month}` and `{year}` exactly once each).
+- `src/ui/LongChartSeries.{h,cpp}`: puts history records on a regular grid of slots and
+  hands the slots to `ChartPlot` as samples, so the line, band, unit conversion and axis
+  code are the ones the short charts use.
+- `src/ui/UiControllerLongCharts.cpp`: one table (`UiController::kRangeGroups`) for the
+  twelve range groups binds, styles, shows and handles the Month buttons, instead of twelve
+  copies of each handler; it also draws the header and the messages.
+- The buttons and arrows are EEZ widgets (`ui/aura-lvgl.eez-project`), hidden by default.
+- New texts in all 11 languages (10 are machine translations for review): the button, the
+  title template, the twelve month names and the three messages. One Chinese glyph was
+  added to the 14 px Noto Sans SC subset.
+
+Host tests: `test/test_chart_period` (month numbering, arrow limits, bounds across DST and
+year ends, local month of a time, title templates), `test/test_long_chart_series` (slot
+counts, exact three-hour merge, gaps, records off the grid, the gas source check),
+`test/test_long_history` (`hourlyChart` reads the range and the hour in progress once;
+refused when off), `test/test_chart_band` (cutting at the first and last column).
+
+Not verified on hardware: the look of the Month button, header and band on the real panels.
