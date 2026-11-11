@@ -279,20 +279,62 @@ void set_pressure(SensorData &data, float pressure_hpa) {
     data.pressure = pressure_hpa;
 }
 
+// Snapshot v3 (15 metrics, outdoor temperature) and the frozen v2 before it.
+constexpr size_t kSnapshotV3Size = 3040U;
+constexpr size_t kSnapshotV2Size = 2848U;
+constexpr size_t kSnapshotStateOffset = 28U;
+constexpr size_t kStateV3Size = 376U;
+constexpr size_t kState14Size = 352U;
+constexpr size_t kSnapshotStates = 8U;  // current + 7 pending
+
+std::vector<uint8_t> narrow_state(const uint8_t *state) {
+    std::vector<uint8_t> out(state, state + kState14Size);
+    if (out[8] | out[9] | out[10] | out[11]) {  // non-empty: day_key set
+        out[6] = 14U;
+        out[7] = 0U;
+    }
+    return out;
+}
+
+void append_u32_le(std::vector<uint8_t> &bytes, uint32_t value);
+uint32_t test_crc32(const uint8_t *bytes, size_t length);
+
+// Rewrites a v3 snapshot as the v2 an older firmware wrote: 14-metric
+// states, version 2, its own size and CRC.
+void downgrade_snapshot_to_v2(std::vector<uint8_t> &snapshot) {
+    TEST_ASSERT_EQUAL_UINT32(kSnapshotV3Size, static_cast<uint32_t>(snapshot.size()));
+    std::vector<uint8_t> v2(snapshot.begin(), snapshot.begin() + kSnapshotStateOffset);
+    for (size_t i = 0; i < kSnapshotStates; ++i) {
+        const auto narrowed = narrow_state(snapshot.data() + kSnapshotStateOffset + i * kStateV3Size);
+        v2.insert(v2.end(), narrowed.begin(), narrowed.end());
+    }
+    TEST_ASSERT_EQUAL_UINT32(kSnapshotV2Size - sizeof(uint32_t), static_cast<uint32_t>(v2.size()));
+    v2[4] = 2U;
+    v2[5] = 0U;
+    v2[6] = static_cast<uint8_t>(kSnapshotV2Size);
+    v2[7] = static_cast<uint8_t>(kSnapshotV2Size >> 8U);
+    append_u32_le(v2, test_crc32(v2.data(), v2.size()));
+    snapshot = v2;
+}
+
+void downgrade_snapshots_to_v2(FakeDailyStorage &storage) {
+    for (auto &entry : storage.binary_files) {
+        if (entry.first == DailyExtremaHistory::kStatePathA ||
+            entry.first == DailyExtremaHistory::kStatePathB) {
+            downgrade_snapshot_to_v2(entry.second);
+        }
+    }
+}
+
 void downgrade_current_state_to_v1_metric(FakeDailyStorage &storage) {
-    constexpr size_t kSnapshotV2Size = 2848U;
-    constexpr size_t kSnapshotV2CurrentOffset = 28U;
-    constexpr size_t kPersistedStateSize = 352U;
     const char *snapshot_path =
         storage.binary_files.count(DailyExtremaHistory::kStatePathB)
             ? DailyExtremaHistory::kStatePathB
             : DailyExtremaHistory::kStatePathA;
     const auto &snapshot = storage.binary_files[snapshot_path];
-    TEST_ASSERT_EQUAL_UINT32(kSnapshotV2Size,
+    TEST_ASSERT_EQUAL_UINT32(kSnapshotV3Size,
                              static_cast<uint32_t>(snapshot.size()));
-    std::vector<uint8_t> legacy(
-        snapshot.begin() + kSnapshotV2CurrentOffset,
-        snapshot.begin() + kSnapshotV2CurrentOffset + kPersistedStateSize);
+    std::vector<uint8_t> legacy = narrow_state(snapshot.data() + kSnapshotStateOffset);
     legacy[4] = 1;
     legacy[5] = 0;
     legacy[13] = 0;
@@ -335,8 +377,8 @@ void append_u32_le(std::vector<uint8_t> &bytes, uint32_t value) {
 
 void downgrade_snapshot_to_v1(std::vector<uint8_t> &snapshot) {
     constexpr size_t kSnapshotV1Size = 2840U;
-    constexpr size_t kSnapshotV2Size = 2848U;
     constexpr size_t kSnapshotV1HeaderSize = 20U;
+    downgrade_snapshot_to_v2(snapshot);
     constexpr size_t kSnapshotV2StateOffset = 28U;
     constexpr size_t kSnapshotV2CrcOffset = 2844U;
 
@@ -790,6 +832,87 @@ void test_daily_extrema_small_backward_hold_survives_reboot() {
             "2026-06-27,co2,ppm,800") != std::string::npos);
 }
 
+// An update from the 14-metric firmware keeps the open day and its pending
+// day, rewrites the snapshot as v3, and then tracks outdoor temperature.
+void test_daily_extrema_v2_snapshot_migrates_and_tracks_outdoor() {
+    const time_t day_one_sample = local_epoch(2026, 6, 27, 12, 0);
+    const time_t day_two_early = local_epoch(2026, 6, 28, 0, 1);
+    FakeDailyStorage storage;
+    storage.fail_append = true;
+    {
+        DailyExtremaHistory writer;
+        writer.begin(storage, true);
+        SensorData data;
+        setNowEpoch(day_one_sample);
+        set_basic_data(data, 800, 22.0f, 12.0f);
+        writer.update(data, getMillis(), true);
+        setNowEpoch(day_two_early);
+        set_basic_data(data, 900, 23.0f, 13.0f);
+        writer.update(data, getMillis(), true);
+        TEST_ASSERT_EQUAL_UINT8(1, writer.pendingDayCount());
+        writer.flush();
+    }
+    downgrade_snapshots_to_v2(storage);
+    storage.fail_append = false;
+
+    DailyExtremaHistory restored;
+    restored.begin(storage, true);
+    SensorData data;
+    set_basic_data(data, 950, 23.5f, 14.0f);
+    data.outdoor_temp_valid = true;
+    data.outdoor_temp = -3.5f;
+    data.outdoor_temp_source = ChartsHistory::OUTDOOR_SOURCE_API;
+    advanceMillis(DailyExtremaHistory::kStateSaveRetryIntervalMs + 1U);
+    restored.update(data, getMillis(), true);
+    TEST_ASSERT_EQUAL_UINT32(20260628U, restored.currentDayKey());
+    restored.flush();
+    TEST_ASSERT_EQUAL_UINT8(0, restored.pendingDayCount());
+    const std::string &csv = storage.text_files[DailyExtremaHistory::kDailyCsvPath];
+    TEST_ASSERT_TRUE(csv.find("2026-06-27,co2,ppm,800") != std::string::npos);
+    TEST_ASSERT_TRUE(csv.find("outdoor_temp") == std::string::npos);  // day one had none
+
+    bool wrote_v3 = false;
+    for (const auto &entry : storage.binary_files) {
+        wrote_v3 = wrote_v3 || entry.second.size() == kSnapshotV3Size;
+    }
+    TEST_ASSERT_TRUE(wrote_v3);
+
+    // The day with outdoor data reaches the CSV as its own row, in °C here.
+    setNowEpoch(local_epoch(2026, 6, 29, 0, 5));
+    advanceMillis(24UL * 60UL * 60UL * 1000UL);
+    set_basic_data(data, 700, 21.0f, 5.0f);
+    data.outdoor_temp_valid = false;
+    restored.update(data, getMillis(), true);
+    restored.flush();
+    TEST_ASSERT_TRUE(storage.text_files[DailyExtremaHistory::kDailyCsvPath].find(
+                         "2026-06-28,outdoor_temp,C,-3.5") != std::string::npos);
+}
+
+// A v2 snapshot whose CRC does not match is ignored, never migrated.
+void test_daily_extrema_v2_snapshot_with_bad_crc_is_ignored() {
+    FakeDailyStorage storage;
+    {
+        DailyExtremaHistory writer;
+        writer.begin(storage, true);
+        SensorData data;
+        set_basic_data(data, 800, 22.0f, 12.0f);
+        writer.update(data, getMillis(), true);
+        writer.flush();
+    }
+    downgrade_snapshots_to_v2(storage);
+    for (auto &entry : storage.binary_files) {
+        entry.second[100] ^= 0x5AU;
+    }
+    DailyExtremaHistory restored;
+    restored.begin(storage, true);
+    SensorData data;
+    restored.update(data, getMillis(), true);
+    TEST_ASSERT_EQUAL_UINT8(0, restored.pendingDayCount());
+    String csv;
+    restored.currentDayCsv(csv);
+    TEST_ASSERT_TRUE(std::string(csv.c_str()).find(",800") == std::string::npos);
+}
+
 void test_daily_extrema_v1_snapshot_does_not_invent_runtime_anchor() {
     const time_t day_one_late = local_epoch(2026, 6, 27, 23, 58);
     const time_t day_two_early = local_epoch(2026, 6, 28, 0, 1);
@@ -814,11 +937,11 @@ void test_daily_extrema_v1_snapshot_does_not_invent_runtime_anchor() {
     TEST_ASSERT_EQUAL_UINT32(20260627U, restored.currentDayKey());
     TEST_ASSERT_EQUAL_UINT8(0, restored.pendingDayCount());
 
-    bool wrote_v2 = false;
+    bool wrote_v3 = false;
     for (const auto &entry : storage.binary_files) {
-        wrote_v2 = wrote_v2 || entry.second.size() == 2848U;
+        wrote_v3 = wrote_v3 || entry.second.size() == kSnapshotV3Size;
     }
-    TEST_ASSERT_TRUE(wrote_v2);
+    TEST_ASSERT_TRUE(wrote_v3);
 }
 
 void test_daily_extrema_v1_read_failure_defers_restore_without_overwrite() {
@@ -1597,6 +1720,8 @@ int main(int, char **) {
     RUN_TEST(test_daily_extrema_unit_switch_applies_to_next_day_only);
     RUN_TEST(test_daily_extrema_restores_v2_units_from_state);
     RUN_TEST(test_daily_extrema_migrates_v1_state_as_metric);
+    RUN_TEST(test_daily_extrema_v2_snapshot_migrates_and_tracks_outdoor);
+    RUN_TEST(test_daily_extrema_v2_snapshot_with_bad_crc_is_ignored);
     RUN_TEST(test_daily_extrema_resets_optional_gas_when_type_changes);
     RUN_TEST(test_daily_extrema_exports_o2_as_percent_volume);
     RUN_TEST(test_daily_extrema_queues_previous_day_when_csv_append_fails);

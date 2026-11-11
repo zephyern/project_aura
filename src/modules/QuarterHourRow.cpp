@@ -18,6 +18,7 @@ constexpr const char *kSuffixes[kFieldsPerMetric] = {
 };
 constexpr size_t kMaxNumberChars = 40;
 constexpr int kOptionalGas = ChartsHistory::METRIC_OPTIONAL_GAS;
+constexpr int kOutdoor = ChartsHistory::METRIC_OUTDOOR_TEMP;
 enum class Layout : uint8_t { Quarter, Span };
 // Every version of the first column starts with this; the suffix is the version.
 constexpr const char *kStartPrefix = "start_utc_v";
@@ -55,7 +56,7 @@ bool fieldEquals(const Field &field, const char *prefix, const char *suffix) {
 
 bool knownColumn(const Field &field) {
     if (fieldEquals(field, kStartColumn, nullptr) || fieldEquals(field, kEndColumn, nullptr) ||
-        fieldEquals(field, kOptionalGasTypeColumn, nullptr)) {
+        fieldEquals(field, kOptionalGasTypeColumn, nullptr) || fieldEquals(field, kOutdoorSourceColumn, nullptr)) {
         return true;
     }
     for (uint8_t m = 0; m < ChartsHistory::kMetricCount; ++m) {
@@ -211,7 +212,7 @@ DecodeResult decodeMetric(const Field *f, uint32_t start, uint32_t length, Histo
 size_t leadingColumns(Layout layout) { return layout == Layout::Span ? 2 : 1; }
 
 size_t fieldCount(Layout layout) {
-    return leadingColumns(layout) + ChartsHistory::kMetricCount * kFieldsPerMetric + 1;
+    return leadingColumns(layout) + ChartsHistory::kMetricCount * kFieldsPerMetric + 2;
 }
 
 void appendHeaderFor(Layout layout, String &out) {
@@ -229,6 +230,8 @@ void appendHeaderFor(Layout layout, String &out) {
     }
     line += ',';
     line += kOptionalGasTypeColumn;
+    line += ',';
+    line += kOutdoorSourceColumn;
     line += '\n';
     out += line;
 }
@@ -243,14 +246,16 @@ EncodeResult appendRowFor(Layout layout, uint32_t start, uint32_t end,
     }
     for (int m = 0; m < ChartsHistory::kMetricCount; ++m) {
         const HistoryAggregate &a = metrics[m];
-        if (m != kOptionalGas && a.source != 0) {
+        if (m != kOptionalGas && m != kOutdoor && a.source != 0) {
             return EncodeResult::BadSource;
         }
         if (a.empty()) {
+            if (m == kOutdoor && a.source != 0) return EncodeResult::BadSource;
             line += ",,0,,,,";
             continue;
         }
-        if (m == kOptionalGas && a.source == 0) {
+        if ((m == kOptionalGas && a.source == 0) ||
+            (m == kOutdoor && a.source != ChartsHistory::OUTDOOR_SOURCE_API)) {
             return EncodeResult::BadSource;
         }
         if (!std::isfinite(a.sum) || !std::isfinite(a.min) || !std::isfinite(a.max)) {
@@ -274,6 +279,8 @@ EncodeResult appendRowFor(Layout layout, uint32_t start, uint32_t end,
     }
     line += ',';
     appendUnsigned(line, metrics[kOptionalGas].source);
+    line += ',';
+    if (!metrics[kOutdoor].empty()) line += kOutdoorSourceApi;
     line += '\n';
     out += line;
     return EncodeResult::Ok;
@@ -305,7 +312,8 @@ DecodeResult decodeHeaderFor(Layout layout, const char *line, size_t len) {
     const size_t lead = leadingColumns(layout);
     if (!fieldEquals(fields[0], kStartColumn, nullptr) ||
         (layout == Layout::Span && !fieldEquals(fields[1], kEndColumn, nullptr)) ||
-        !fieldEquals(fields[count - 1], kOptionalGasTypeColumn, nullptr)) {
+        !fieldEquals(fields[count - 2], kOptionalGasTypeColumn, nullptr) ||
+        !fieldEquals(fields[count - 1], kOutdoorSourceColumn, nullptr)) {
         return DecodeResult::BadHeader;
     }
     for (uint8_t m = 0; m < ChartsHistory::kMetricCount; ++m) {
@@ -354,7 +362,7 @@ DecodeResult decodeRowFor(Layout layout, const char *line, size_t len, uint32_t 
         }
     }
     uint32_t gas_type = 0;
-    if (!parseUnsigned(fields[count - 1], UINT8_MAX, gas_type)) {
+    if (!parseUnsigned(fields[count - 2], UINT8_MAX, gas_type)) {
         return DecodeResult::Malformed;
     }
     HistoryAggregate &gas = metrics[kOptionalGas];
@@ -362,6 +370,13 @@ DecodeResult decodeRowFor(Layout layout, const char *line, size_t len, uint32_t 
         return DecodeResult::BadValue;
     }
     gas.source = static_cast<uint8_t>(gas_type);
+    // The outdoor source word must match the data: "api" with data, empty without.
+    HistoryAggregate &outdoor = metrics[kOutdoor];
+    const Field &word = fields[count - 1];
+    if (outdoor.empty() ? word.len != 0 : !fieldEquals(word, kOutdoorSourceApi, nullptr)) {
+        return DecodeResult::BadValue;
+    }
+    outdoor.source = outdoor.empty() ? ChartsHistory::OUTDOOR_SOURCE_NONE : ChartsHistory::OUTDOOR_SOURCE_API;
     start_out = start;
     end_out = end;
     for (int m = 0; m < ChartsHistory::kMetricCount; ++m) metrics_out[m] = metrics[m];

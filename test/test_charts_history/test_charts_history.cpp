@@ -7,6 +7,7 @@
 #include "core/ChartsRuntimeState.h"
 #include "modules/ChartsHistory.h"
 #include "modules/StorageManager.h"
+#include "modules/OutdoorFeed.h"
 #include "web/WebChartsApiUtils.h"
 
 constexpr uint32_t base_epoch = 1767225600; // UTC hour boundary
@@ -39,6 +40,107 @@ public:
     bool metricValueFromOldest(uint16_t n,ChartsHistory::Metric m,float &v,bool &b) const override { return s_.metricValueFromOldest(n,m,v,b); }
 private: const ChartsRuntimeState::Snapshot &s_;
 };
+// Frozen v3 block layout (14 metrics), mirrored here to write an old file.
+struct EntryV3 {
+    uint32_t start_epoch; uint16_t valid_mask; bool persisted; uint8_t kind; uint8_t optional_gas_type;
+    float values[14]; float minimum[14]; float maximum[14];
+    uint16_t samples[14]; uint16_t first_second[14]; uint16_t last_second[14];
+};
+struct SegmentV3 { uint32_t magic; uint32_t hour; uint16_t version; uint16_t present; EntryV3 entries[12]; uint32_t checksum; };
+static_assert(sizeof(SegmentV3) == 3184, "test mirror of the v3 block");
+uint32_t fnv(const void *d, size_t n) {
+    const uint8_t *b = static_cast<const uint8_t *>(d); uint32_t h = 2166136261u;
+    for (size_t i = 0; i < n; ++i) h = (h ^ b[i]) * 16777619u;
+    return h;
+}
+constexpr auto OUT = ChartsHistory::METRIC_OUTDOOR_TEMP;
+SensorData outdoor(float v) {
+    SensorData d; d.outdoor_temp = v; d.outdoor_temp_valid = true;
+    d.outdoor_temp_source = ChartsHistory::OUTDOOR_SOURCE_API; return d;
+}
+void test_v3_block_loads_with_every_value_and_no_outdoor() {
+    StorageManager s; s.begin();
+    SegmentV3 old{}; old.magic = 0x43485333; old.version = 3; old.hour = base_epoch / 3600; old.present = 0x3;
+    for (int slot = 0; slot < 2; ++slot) {
+        EntryV3 &e = old.entries[slot];
+        e.start_epoch = base_epoch + slot * 300; e.kind = ChartsHistory::Summary; e.persisted = true;
+        e.valid_mask = ChartsHistory::metricBit(TEMP) | ChartsHistory::metricBit(CO2) | ChartsHistory::metricBit(GAS);
+        e.optional_gas_type = 3;
+        for (int m : {int(TEMP), int(CO2), int(GAS)}) {
+            e.values[m] = 10.0f * m + slot + 1; e.minimum[m] = e.values[m] - 1; e.maximum[m] = e.values[m] + 2;
+            e.samples[m] = 7 + slot; e.first_second[m] = 4; e.last_second[m] = 290;
+        }
+    }
+    old.checksum = fnv(&old, offsetof(SegmentV3, checksum));
+    char path[32]; StorageManager::chartsSegmentPath(static_cast<int>(old.hour % StorageManager::kChartsSegmentCount), path, sizeof(path));
+    TEST_ASSERT_TRUE(s.saveBlobAtomic(path, &old, sizeof(old)));
+    at(900); ChartsHistory h; h.load(s);
+    TEST_ASSERT_EQUAL(2, h.count());
+    for (int slot = 0; slot < 2; ++slot) {
+        const auto e = entry(h, slot); const EntryV3 &o = old.entries[slot];
+        TEST_ASSERT_EQUAL(o.start_epoch, e.start_epoch); TEST_ASSERT_EQUAL(o.valid_mask, e.valid_mask);
+        TEST_ASSERT_EQUAL(o.kind, e.kind); TEST_ASSERT_EQUAL(3, e.optional_gas_type);
+        TEST_ASSERT_EQUAL(ChartsHistory::OUTDOOR_SOURCE_NONE, e.outdoor_source);
+        for (int m = 0; m < 14; ++m) {
+            TEST_ASSERT_EQUAL_FLOAT(o.values[m], e.values[m]); TEST_ASSERT_EQUAL_FLOAT(o.minimum[m], e.minimum[m]);
+            TEST_ASSERT_EQUAL_FLOAT(o.maximum[m], e.maximum[m]); TEST_ASSERT_EQUAL(o.samples[m], e.samples[m]);
+            TEST_ASSERT_EQUAL(o.first_second[m], e.first_second[m]); TEST_ASSERT_EQUAL(o.last_second[m], e.last_second[m]);
+        }
+        TEST_ASSERT_EQUAL(0, e.samples[OUT]); TEST_ASSERT_FALSE(e.valid_mask & ChartsHistory::metricBit(OUT));
+    }
+}
+void test_v3_block_with_bad_checksum_is_skipped() {
+    StorageManager s; s.begin();
+    SegmentV3 old{}; old.magic = 0x43485333; old.version = 3; old.hour = base_epoch / 3600; old.present = 0x1;
+    old.entries[0].start_epoch = base_epoch; old.entries[0].kind = ChartsHistory::Gap;
+    old.checksum = fnv(&old, offsetof(SegmentV3, checksum)) ^ 1U;
+    char path[32]; StorageManager::chartsSegmentPath(static_cast<int>(old.hour % StorageManager::kChartsSegmentCount), path, sizeof(path));
+    TEST_ASSERT_TRUE(s.saveBlobAtomic(path, &old, sizeof(old)));
+    at(900); ChartsHistory h; h.load(s); TEST_ASSERT_EQUAL(0, h.count());
+}
+void test_outdoor_reading_is_summarised_with_its_source_and_survives_reload() {
+    StorageManager s; s.begin(); ChartsHistory h; h.load(s);
+    const uint16_t bit = ChartsHistory::metricBit(OUT);
+    at(0); h.update(outdoor(4.5f), s, false, true, bit);
+    at(150); h.update(outdoor(6.5f), s, false, true, bit);
+    at(300); h.update(SensorData{}, s, false, true, 0);
+    auto e = entry(h);
+    TEST_ASSERT_EQUAL(ChartsHistory::OUTDOOR_SOURCE_API, e.outdoor_source); TEST_ASSERT_EQUAL(2, e.samples[OUT]);
+    TEST_ASSERT_FLOAT_WITHIN(.001, 5.5, e.values[OUT]); TEST_ASSERT_TRUE(h.metricHasRange(e, OUT));
+    ChartsHistory r; r.load(s); auto again = entry(r);
+    TEST_ASSERT_EQUAL(ChartsHistory::OUTDOOR_SOURCE_API, again.outdoor_source);
+    TEST_ASSERT_FLOAT_WITHIN(.001, 5.5, again.values[OUT]);
+}
+void test_interval_without_outdoor_carries_no_source() {
+    StorageManager s; s.begin(); ChartsHistory h; h.load(s);
+    observe(h, s, 0, 20); observe(h, s, 300, 0, 0);
+    TEST_ASSERT_EQUAL(ChartsHistory::OUTDOOR_SOURCE_NONE, entry(h).outdoor_source);
+}
+void test_web_history_export_never_emits_outdoor() {
+    StorageManager s; s.begin(); ChartsHistory h; h.load(s);
+    SensorData d = outdoor(3.0f); d.temperature = 21; d.temp_valid = true;
+    at(0); h.update(d, s, false, true, ChartsHistory::metricBit(OUT) | temp_mask);
+    at(300); h.update(SensorData{}, s, false, true, 0);
+    ChartsRuntimeState runtime; runtime.update(h); auto snap = runtime.copySnapshot(); TEST_ASSERT_NOT_NULL(snap.get());
+    View view(*snap); ArduinoJson::JsonDocument batch;
+    WebChartsApiUtils::fillHistoryJson(batch.to<ArduinoJson::JsonObject>(), view);
+    auto metrics = batch["records"][0]["metrics"];
+    TEST_ASSERT_TRUE(metrics["1"].is<ArduinoJson::JsonObject>());
+    char key[4]; snprintf(key, sizeof(key), "%d", static_cast<int>(OUT));
+    TEST_ASSERT_FALSE(metrics[key].is<ArduinoJson::JsonObject>());
+}
+void test_outdoor_feed_copies_only_a_good_check() {
+    WeatherManager::Snapshot snap{}; snap.status = WeatherApi::Status::Ok; snap.temp_c = 7.25f; snap.seq = 1;
+    SensorData d; OutdoorFeed::apply(snap, d);
+    TEST_ASSERT_TRUE(d.outdoor_temp_valid); TEST_ASSERT_EQUAL_FLOAT(7.25f, d.outdoor_temp);
+    TEST_ASSERT_EQUAL(ChartsHistory::OUTDOOR_SOURCE_API, d.outdoor_temp_source);
+    uint32_t last = 0;
+    TEST_ASSERT_EQUAL(ChartsHistory::metricBit(OUT), OutdoorFeed::freshBit(snap, last));
+    TEST_ASSERT_EQUAL(0, OutdoorFeed::freshBit(snap, last)); // same reading again is not fresh
+    snap.status = WeatherApi::Status::NoNetwork; snap.seq = 2; OutdoorFeed::apply(snap, d);
+    TEST_ASSERT_FALSE(d.outdoor_temp_valid); TEST_ASSERT_EQUAL(ChartsHistory::OUTDOOR_SOURCE_NONE, d.outdoor_temp_source);
+    TEST_ASSERT_EQUAL(0, OutdoorFeed::freshBit(snap, last));
+}
 void test_summary_counts_new_equal_values_and_preserves_peak() {
     StorageManager s; s.begin(); ChartsHistory h; h.load(s);
     observe(h,s,0,20); observe(h,s,10,20); observe(h,s,20,80);
@@ -295,5 +397,11 @@ int main() {
     RUN_TEST(test_completed_interval_publishes_exact_sum_and_low_high_seconds);
     RUN_TEST(test_gaps_untrusted_and_rolled_back_intervals_are_not_published);
     RUN_TEST(test_only_one_interval_listener_can_be_registered);
+    RUN_TEST(test_v3_block_loads_with_every_value_and_no_outdoor);
+    RUN_TEST(test_v3_block_with_bad_checksum_is_skipped);
+    RUN_TEST(test_outdoor_reading_is_summarised_with_its_source_and_survives_reload);
+    RUN_TEST(test_interval_without_outdoor_carries_no_source);
+    RUN_TEST(test_web_history_export_never_emits_outdoor);
+    RUN_TEST(test_outdoor_feed_copies_only_a_good_check);
     return UNITY_END();
 }

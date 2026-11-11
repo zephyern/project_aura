@@ -44,6 +44,11 @@ snapshot kind. They are not converted into invented five-minute statistics. New 
 use /charts3_00.bin through /charts3_24.bin. Clear history/factory clear removes both forms.
 The old file is preserved for migration/rollback; older firmware will not see new v3 data.
 
+The blocks are now schema v4: a 15th metric, outdoor temperature, with its source
+([WEATHER.md](WEATHER.md)). v3 blocks still load, every value kept, and each is rewritten
+as v4 when its hour comes round again. Firmware from before v4 cannot read v4 blocks.
+The web chart API below keeps reporting version 3: its shape did not change.
+
 Without trusted time, a new session can show RAM history with null timestamps; it is not
 exportable as absolute-time history. Restored records are not extended using untrusted time.
 Backward clock corrections hold sampling until the previous observed clock catches up and
