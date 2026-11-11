@@ -48,6 +48,9 @@ public:
                   const HistoryAggregate (&metrics)[ChartsHistory::kMetricCount]);
     AddResult add(const QuarterHourRow::Row &row);
     AddResult add(const Record &record);
+    // Moves the end of the open bucket. False (nothing changes) when the new
+    // end is not after the start and after everything already added.
+    bool setEnd(uint32_t end);
 
     const Record &record() const { return record_; }
     const Stats &stats() const { return stats_; }

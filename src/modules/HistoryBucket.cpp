@@ -28,6 +28,12 @@ bool Builder::begin(uint32_t start, uint32_t end) {
     return true;
 }
 
+bool Builder::setEnd(uint32_t end) {
+    if (!begun_ || end <= record_.start_epoch || end < last_end_) return false;
+    record_.end_epoch = end;
+    return true;
+}
+
 AddResult Builder::add(uint32_t start, uint32_t end,
                        const HistoryAggregate (&metrics)[ChartsHistory::kMetricCount]) {
     AddResult result = AddResult::Added;
