@@ -2,6 +2,7 @@
 #include <Arduino.h>
 #include <ctype.h>
 #include "AuraI2c.h"
+#include "config/ChartsSettings.h"
 #include "modules/StorageHealth.h"
 #include <string.h>
 #include <time.h>
@@ -794,5 +795,7 @@ namespace Config {
         bool history_log_enabled = false;
         // What the long-term history does when the card is full.
         StorageHealth::FullAction history_full_action = StorageHealth::kDefaultFullAction;
+        // Optional chart features (docs/CHARTS_HISTORY.md), all off by default.
+        ChartsSettings::Values charts{};
     };
 }

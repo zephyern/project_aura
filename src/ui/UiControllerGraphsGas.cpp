@@ -131,8 +131,8 @@ void UiController::update_voc_info_graph() {
     float max_voc = stats.max_value;
     float latest_voc = stats.latest_value;
 
-    float scale_min = has_values ? min_voc : 100.0f;
-    float scale_max = has_values ? max_voc : 100.0f;
+    float scale_min = has_values ? stats.scale_min : 100.0f;
+    float scale_max = has_values ? stats.scale_max : 100.0f;
     GraphAxisConfig axis_config{};
     axis_config.fallback_center = 100.0f;
     axis_config.min_span = 80.0f;
@@ -267,8 +267,8 @@ void UiController::update_nox_info_graph() {
     float max_nox = stats.max_value;
     float latest_nox = stats.latest_value;
 
-    float scale_min = has_values ? min_nox : 50.0f;
-    float scale_max = has_values ? max_nox : 50.0f;
+    float scale_min = has_values ? stats.scale_min : 50.0f;
+    float scale_max = has_values ? stats.scale_max : 50.0f;
     GraphAxisConfig axis_config{};
     axis_config.fallback_center = 50.0f;
     axis_config.min_span = 60.0f;
@@ -477,8 +477,8 @@ void UiController::update_optional_gas_info_graph() {
     float max_ppm = stats.max_value;
     float latest_ppm = stats.latest_value;
 
-    float scale_min = has_values ? min_ppm : 0.0f;
-    float scale_max = has_values ? max_ppm : profile.orange_max_ppm;
+    float scale_min = has_values ? stats.scale_min : 0.0f;
+    float scale_max = has_values ? stats.scale_max : profile.orange_max_ppm;
     if (profile.classification == UiOptionalGasProfile::ClassificationMode::NormalRange) {
         scale_min = fminf(scale_min, profile.normal_min - 0.5f);
         scale_max = fmaxf(scale_max, profile.normal_max + 0.5f);
@@ -621,8 +621,8 @@ void UiController::update_hcho_info_graph() {
     float max_hcho = stats.max_value;
     float latest_hcho = stats.latest_value;
 
-    float scale_min = has_values ? min_hcho : 20.0f;
-    float scale_max = has_values ? max_hcho : 20.0f;
+    float scale_min = has_values ? stats.scale_min : 20.0f;
+    float scale_max = has_values ? stats.scale_max : 20.0f;
     GraphAxisConfig axis_config{};
     axis_config.fallback_center = 20.0f;
     axis_config.min_span = 40.0f;
@@ -757,8 +757,8 @@ void UiController::update_co2_info_graph() {
     float max_co2 = stats.max_value;
     float latest_co2 = stats.latest_value;
 
-    float scale_min = has_values ? min_co2 : 700.0f;
-    float scale_max = has_values ? max_co2 : 700.0f;
+    float scale_min = has_values ? stats.scale_min : 700.0f;
+    float scale_max = has_values ? stats.scale_max : 700.0f;
     GraphAxisConfig axis_config{};
     axis_config.fallback_center = 700.0f;
     axis_config.min_span = 150.0f;
@@ -894,8 +894,8 @@ void UiController::update_co_info_graph() {
     float max_co = stats.max_value;
     float latest_co = stats.latest_value;
 
-    float scale_min = has_values ? min_co : 0.0f;
-    float scale_max = has_values ? max_co : Config::AQ_CO_GREEN_MAX_PPM;
+    float scale_min = has_values ? stats.scale_min : 0.0f;
+    float scale_max = has_values ? stats.scale_max : Config::AQ_CO_GREEN_MAX_PPM;
     const float fallback = Config::AQ_CO_GREEN_MAX_PPM * 0.5f;
     GraphAxisConfig axis_config{};
     axis_config.fallback_center = fallback;
