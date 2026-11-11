@@ -30,7 +30,9 @@ constexpr uint16_t kDailyExtremaVersionV1 = 1;
 constexpr uint16_t kDailyExtremaVersion = 2;
 constexpr uint32_t kDailySnapshotMagic = 0x44585333; // "DXS3"
 constexpr uint16_t kDailySnapshotVersionV1 = 1;
-constexpr uint16_t kDailySnapshotVersion = 2;
+constexpr uint16_t kDailySnapshotVersionV2 = 2;
+// v3 widened every state to 15 metrics (outdoor temperature); v1/v2 migrate.
+constexpr uint16_t kDailySnapshotVersion = 3;
 constexpr uint32_t kBackwardDayHoldMaxS =
     Config::CHART_HISTORY_STEP_MS / 1000UL;
 constexpr float kHpaToInhg = 0.0295299830714f;
@@ -52,6 +54,7 @@ const DailyExtremaHistory::MetricDef kMetricDefs[] = {
     {ChartsHistory::METRIC_PM4, "pm4", "ug/m3", 1},
     {ChartsHistory::METRIC_PM10, "pm10", "ug/m3", 1},
     {ChartsHistory::METRIC_OPTIONAL_GAS, "optional_gas", "ppm", 2},
+    {ChartsHistory::METRIC_OUTDOOR_TEMP, "outdoor_temp", "C", 1},
 };
 
 static_assert(sizeof(kMetricDefs) / sizeof(kMetricDefs[0]) == ChartsHistory::kMetricCount,
@@ -89,7 +92,7 @@ float csv_metric_value(ChartsHistory::Metric metric, float value, bool units_c, 
     if (units_c) {
         return value;
     }
-    if (metric == ChartsHistory::METRIC_TEMPERATURE) {
+    if (metric == ChartsHistory::METRIC_TEMPERATURE || metric == ChartsHistory::METRIC_OUTDOOR_TEMP) {
         return value * 9.0f / 5.0f + 32.0f;
     }
     if (metric == ChartsHistory::METRIC_PRESSURE) {
@@ -108,7 +111,7 @@ const char *csv_metric_unit(const DailyExtremaHistory::MetricDef &def,
     if (units_c) {
         return def.unit;
     }
-    if (def.metric == ChartsHistory::METRIC_TEMPERATURE) {
+    if (def.metric == ChartsHistory::METRIC_TEMPERATURE || def.metric == ChartsHistory::METRIC_OUTDOOR_TEMP) {
         return "F";
     }
     if (def.metric == ChartsHistory::METRIC_PRESSURE) {
@@ -400,50 +403,21 @@ DailyExtremaHistory::readSnapshotFile(const char *path,
         if (validSnapshot(snapshot)) {
             return StoredReadResult::Valid;
         }
-    } else if (size == sizeof(PersistedSnapshotV1)) {
-        // The v1 record is eight bytes smaller than v2. Read it into the
-        // already allocated v2 object representation, validate it as bytes,
-        // then shift the state block in place. This avoids a third ~2.8 KiB
-        // restore allocation under memory pressure.
+    } else if (size == sizeof(PersistedSnapshotV1) || size == sizeof(PersistedSnapshotV2)) {
+        // Older records are smaller than v3: read them into the v3 object
+        // representation and widen in place, avoiding a second ~3 KiB buffer.
         if (!storage_->readBinary(path, &snapshot, size, read_len) ||
             read_len != size) {
             LOGE("DailyHistory",
-                 "v1 snapshot read failed path=%s size=%u read=%u",
+                 "old snapshot read failed path=%s size=%u read=%u",
                  path,
                  static_cast<unsigned>(size),
                  static_cast<unsigned>(read_len));
             return StoredReadResult::RetryableError;
         }
-        uint8_t *bytes = reinterpret_cast<uint8_t *>(&snapshot);
-        if (validSnapshotV1Bytes(bytes, size)) {
-            uint32_t generation = 0;
-            uint32_t dropped_pending_days = 0;
-            uint8_t pending_count = 0;
-            memcpy(&generation,
-                   bytes + offsetof(PersistedSnapshotV1, generation),
-                   sizeof(generation));
-            memcpy(&pending_count,
-                   bytes + offsetof(PersistedSnapshotV1, pending_count),
-                   sizeof(pending_count));
-            memcpy(&dropped_pending_days,
-                   bytes + offsetof(PersistedSnapshotV1, dropped_pending_days),
-                   sizeof(dropped_pending_days));
-            constexpr size_t kStateBlockSize =
-                sizeof(PersistedState) * (1U + kMaxPendingDays);
-            memmove(bytes + offsetof(PersistedSnapshot, current),
-                    bytes + offsetof(PersistedSnapshotV1, current),
-                    kStateBlockSize);
-            snapshot.magic = kDailySnapshotMagic;
-            snapshot.version = kDailySnapshotVersion;
-            snapshot.size = sizeof(PersistedSnapshot);
-            snapshot.generation = generation;
-            snapshot.pending_count = pending_count;
-            memset(snapshot.reserved, 0, sizeof(snapshot.reserved));
-            snapshot.dropped_pending_days = dropped_pending_days;
-            snapshot.last_update_epoch = 0;
-            snapshot.csv_cleanup_day_key = 0;
-            snapshot.crc32 = snapshotCrc32(snapshot);
-            LOGI("DailyHistory", "migrated v1 snapshot path=%s", path);
+        if (migrateOldSnapshot(snapshot, size) && validSnapshot(snapshot)) {
+            LOGI("DailyHistory", "migrated %s snapshot path=%s",
+                 size == sizeof(PersistedSnapshotV1) ? "v1" : "v2", path);
             return StoredReadResult::Valid;
         }
     }
@@ -468,20 +442,21 @@ DailyExtremaHistory::readLegacyState(PersistedState &state) const {
     if (!exists) {
         return StoredReadResult::Missing;
     }
-    if (size != sizeof(state)) {
+    // The legacy file predates outdoor temperature: always 14 metrics.
+    if (size != sizeof(PersistedState14)) {
         LOGW("DailyHistory", "ignored invalid legacy state size=%u",
              static_cast<unsigned>(size));
         return StoredReadResult::Invalid;
     }
     size_t read_len = 0;
     memset(&state, 0, sizeof(state));
-    if (!storage_->readBinary(kLegacyStatePath, &state, sizeof(state), read_len) ||
-        read_len != sizeof(state)) {
+    if (!storage_->readBinary(kLegacyStatePath, &state, sizeof(PersistedState14), read_len) ||
+        read_len != sizeof(PersistedState14)) {
         LOGE("DailyHistory", "legacy state read failed size=%u",
              static_cast<unsigned>(read_len));
         return StoredReadResult::RetryableError;
     }
-    if (!validPersistedState(state)) {
+    if (!widenLegacyState(reinterpret_cast<uint8_t *>(&state)) || !validPersistedState(state)) {
         LOGW("DailyHistory", "ignored invalid legacy state size=%u",
              static_cast<unsigned>(read_len));
         return StoredReadResult::Invalid;
@@ -646,58 +621,107 @@ bool DailyExtremaHistory::restoreStoredState(uint32_t current_day_key,
     return true;
 }
 
-bool DailyExtremaHistory::validSnapshotV1Bytes(const void *data, size_t size) {
-    if (!data || size != sizeof(PersistedSnapshotV1)) {
+bool DailyExtremaHistory::widenLegacyState(uint8_t *bytes) {
+    uint32_t day_key = 0;
+    uint16_t metric_count = 0;
+    memcpy(&day_key, bytes + offsetof(PersistedState14, day_key), sizeof(day_key));
+    memcpy(&metric_count, bytes + offsetof(PersistedState14, metric_count), sizeof(metric_count));
+    memset(bytes + sizeof(PersistedState14), 0, sizeof(PersistedState) - sizeof(PersistedState14));
+    if (day_key == 0) {
+        return true;  // an empty slot stays all zero
+    }
+    if (metric_count != ChartsHistory::kLegacyMetricCount) {
         return false;
     }
-    const uint8_t *bytes = static_cast<const uint8_t *>(data);
+    metric_count = ChartsHistory::kMetricCount;
+    memcpy(bytes + offsetof(PersistedState, metric_count), &metric_count, sizeof(metric_count));
+    return true;
+}
+
+namespace {
+
+template <typename Old>
+struct OldSnapshotHeader {
     uint32_t magic = 0;
     uint16_t version = 0;
     uint16_t record_size = 0;
+    uint32_t generation = 0;
     uint8_t pending_count = 0;
+    uint32_t dropped_pending_days = 0;
     uint32_t stored_crc = 0;
-    memcpy(&magic,
-           bytes + offsetof(PersistedSnapshotV1, magic),
-           sizeof(magic));
-    memcpy(&version,
-           bytes + offsetof(PersistedSnapshotV1, version),
-           sizeof(version));
-    memcpy(&record_size,
-           bytes + offsetof(PersistedSnapshotV1, size),
-           sizeof(record_size));
-    memcpy(&pending_count,
-           bytes + offsetof(PersistedSnapshotV1, pending_count),
-           sizeof(pending_count));
-    memcpy(&stored_crc,
-           bytes + offsetof(PersistedSnapshotV1, crc32),
-           sizeof(stored_crc));
+    void read(const uint8_t *bytes) {
+        memcpy(&magic, bytes + offsetof(Old, magic), sizeof(magic));
+        memcpy(&version, bytes + offsetof(Old, version), sizeof(version));
+        memcpy(&record_size, bytes + offsetof(Old, size), sizeof(record_size));
+        memcpy(&generation, bytes + offsetof(Old, generation), sizeof(generation));
+        memcpy(&pending_count, bytes + offsetof(Old, pending_count), sizeof(pending_count));
+        memcpy(&dropped_pending_days, bytes + offsetof(Old, dropped_pending_days),
+               sizeof(dropped_pending_days));
+        memcpy(&stored_crc, bytes + offsetof(Old, crc32), sizeof(stored_crc));
+    }
+};
 
-    const PersistedState empty_state{};
-    PersistedState candidate{};
-    memcpy(&candidate,
-           bytes + offsetof(PersistedSnapshotV1, current),
-           sizeof(candidate));
-    const bool current_valid =
-        candidate.day_key == 0
-            ? memcmp(&candidate, &empty_state, sizeof(empty_state)) == 0
-            : validPersistedState(candidate);
-    if (magic != kDailySnapshotMagic ||
-        version != kDailySnapshotVersionV1 ||
-        record_size != sizeof(PersistedSnapshotV1) ||
-        pending_count > kMaxPendingDays ||
-        stored_crc != crc32_prefix(bytes, offsetof(PersistedSnapshotV1, crc32)) ||
-        !current_valid) {
+}  // namespace
+
+bool DailyExtremaHistory::migrateOldSnapshot(PersistedSnapshot &snapshot, size_t size) {
+    uint8_t *bytes = reinterpret_cast<uint8_t *>(&snapshot);
+    const bool v1 = size == sizeof(PersistedSnapshotV1);
+    if (!v1 && size != sizeof(PersistedSnapshotV2)) {
         return false;
     }
-    for (uint8_t i = 0; i < pending_count; ++i) {
-        memcpy(&candidate,
-               bytes + offsetof(PersistedSnapshotV1, pending) +
-                   static_cast<size_t>(i) * sizeof(candidate),
-               sizeof(candidate));
-        if (!validPersistedState(candidate)) {
+    uint32_t magic = 0, generation = 0, dropped = 0, stored_crc = 0, crc_offset = 0;
+    uint32_t last_update_epoch = 0, csv_cleanup_day_key = 0;
+    uint16_t version = 0, record_size = 0;
+    uint8_t pending_count = 0;
+    size_t old_current = 0;
+    if (v1) {
+        OldSnapshotHeader<PersistedSnapshotV1> header;
+        header.read(bytes);
+        magic = header.magic; version = header.version; record_size = header.record_size;
+        generation = header.generation; pending_count = header.pending_count;
+        dropped = header.dropped_pending_days; stored_crc = header.stored_crc;
+        crc_offset = offsetof(PersistedSnapshotV1, crc32);
+        old_current = offsetof(PersistedSnapshotV1, current);
+    } else {
+        OldSnapshotHeader<PersistedSnapshotV2> header;
+        header.read(bytes);
+        magic = header.magic; version = header.version; record_size = header.record_size;
+        generation = header.generation; pending_count = header.pending_count;
+        dropped = header.dropped_pending_days; stored_crc = header.stored_crc;
+        crc_offset = offsetof(PersistedSnapshotV2, crc32);
+        old_current = offsetof(PersistedSnapshotV2, current);
+        memcpy(&last_update_epoch, bytes + offsetof(PersistedSnapshotV2, last_update_epoch),
+               sizeof(last_update_epoch));
+        memcpy(&csv_cleanup_day_key, bytes + offsetof(PersistedSnapshotV2, csv_cleanup_day_key),
+               sizeof(csv_cleanup_day_key));
+    }
+    if (magic != kDailySnapshotMagic ||
+        version != (v1 ? kDailySnapshotVersionV1 : kDailySnapshotVersionV2) ||
+        record_size != size || pending_count > kMaxPendingDays ||
+        stored_crc != crc32_prefix(bytes, crc_offset)) {
+        return false;
+    }
+    // Widen the 1 + kMaxPendingDays states from the last one down: every
+    // state moves to a higher offset, so a descending pass never overwrites
+    // a state that has not moved yet.
+    for (int i = kMaxPendingDays; i >= 0; --i) {
+        uint8_t *to = bytes + offsetof(PersistedSnapshot, current) + static_cast<size_t>(i) * sizeof(PersistedState);
+        memmove(to, bytes + old_current + static_cast<size_t>(i) * sizeof(PersistedState14),
+                sizeof(PersistedState14));
+        if (!widenLegacyState(to)) {
             return false;
         }
     }
+    snapshot.magic = kDailySnapshotMagic;
+    snapshot.version = kDailySnapshotVersion;
+    snapshot.size = sizeof(PersistedSnapshot);
+    snapshot.generation = generation;
+    snapshot.pending_count = pending_count;
+    memset(snapshot.reserved, 0, sizeof(snapshot.reserved));
+    snapshot.dropped_pending_days = dropped;
+    snapshot.last_update_epoch = last_update_epoch;
+    snapshot.csv_cleanup_day_key = csv_cleanup_day_key;
+    snapshot.crc32 = snapshotCrc32(snapshot);
     return true;
 }
 
@@ -966,6 +990,8 @@ void DailyExtremaHistory::update(const SensorData &data,
     updateMetric(ChartsHistory::METRIC_PM4, data.pm4_valid, data.pm4, epoch);
     updateMetric(ChartsHistory::METRIC_PM10, data.pm10_valid, data.pm10, epoch);
     updateOptionalGasMetric(data, epoch);
+    // Only one outdoor source exists (the weather API), so no source check here.
+    updateMetric(ChartsHistory::METRIC_OUTDOOR_TEMP, data.outdoor_temp_valid, data.outdoor_temp, epoch);
     last_update_epoch_ = now_epoch;
 
     const bool cleanup_clear_was_pending = csv_cleanup_clear_pending_;

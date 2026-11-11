@@ -114,6 +114,19 @@ private:
         uint8_t reserved[2] = {};
         MetricState metrics[ChartsHistory::kMetricCount] = {};
     };
+    // Frozen 14-metric state (before outdoor temperature): the legacy state
+    // file and the v1/v2 snapshots. Same layout as PersistedState minus the
+    // last metric, so a state is widened by appending one empty MetricState.
+    struct PersistedState14 {
+        uint32_t magic = 0;
+        uint16_t version = 0;
+        uint16_t metric_count = 0;
+        uint32_t day_key = 0;
+        uint8_t optional_gas_type = 0;
+        uint8_t units_c = 1;
+        uint8_t reserved[2] = {};
+        MetricState metrics[ChartsHistory::kLegacyMetricCount] = {};
+    };
 
     struct PersistedSnapshot {
         uint32_t magic = 0;
@@ -138,8 +151,23 @@ private:
         uint8_t pending_count = 0;
         uint8_t reserved[3] = {};
         uint32_t dropped_pending_days = 0;
-        PersistedState current{};
-        PersistedState pending[kMaxPendingDays] = {};
+        PersistedState14 current{};
+        PersistedState14 pending[kMaxPendingDays] = {};
+        uint32_t crc32 = 0;
+    };
+
+    struct PersistedSnapshotV2 {
+        uint32_t magic = 0;
+        uint16_t version = 0;
+        uint16_t size = 0;
+        uint32_t generation = 0;
+        uint8_t pending_count = 0;
+        uint8_t reserved[3] = {};
+        uint32_t dropped_pending_days = 0;
+        uint32_t last_update_epoch = 0;
+        uint32_t csv_cleanup_day_key = 0;
+        PersistedState14 current{};
+        PersistedState14 pending[kMaxPendingDays] = {};
         uint32_t crc32 = 0;
     };
 
@@ -152,26 +180,42 @@ private:
 
     static_assert(sizeof(MetricState) == 24U,
                   "Daily metric-state ABI changed; bump the format version");
-    static_assert(sizeof(PersistedState) == 352U &&
+    static_assert(sizeof(PersistedState) == 376U &&
                       offsetof(PersistedState, metrics) == 16U,
                   "Daily persisted-state ABI changed; bump the format version");
+    static_assert(sizeof(PersistedState14) == 352U &&
+                      offsetof(PersistedState14, metrics) == 16U &&
+                      sizeof(PersistedState) == sizeof(PersistedState14) + sizeof(MetricState),
+                  "Daily 14-metric state disk ABI is frozen");
     static_assert(sizeof(PersistedSnapshotV1) == 2840U &&
                       offsetof(PersistedSnapshotV1, current) == 20U &&
                       offsetof(PersistedSnapshotV1, crc32) == 2836U,
                   "Daily snapshot v1 disk ABI changed");
-    static_assert(sizeof(PersistedSnapshot) == 2848U &&
+    static_assert(sizeof(PersistedSnapshotV2) == 2848U &&
+                      offsetof(PersistedSnapshotV2, last_update_epoch) == 20U &&
+                      offsetof(PersistedSnapshotV2, csv_cleanup_day_key) == 24U &&
+                      offsetof(PersistedSnapshotV2, current) == 28U &&
+                      offsetof(PersistedSnapshotV2, crc32) == 2844U,
+                  "Daily snapshot v2 disk ABI is frozen");
+    static_assert(sizeof(PersistedSnapshot) == 3040U &&
                       offsetof(PersistedSnapshot, last_update_epoch) == 20U &&
                       offsetof(PersistedSnapshot, csv_cleanup_day_key) == 24U &&
                       offsetof(PersistedSnapshot, current) == 28U &&
-                      offsetof(PersistedSnapshot, crc32) == 2844U,
-                  "Daily snapshot v2 disk ABI changed");
+                      offsetof(PersistedSnapshot, crc32) == 3036U,
+                  "Daily snapshot v3 disk ABI changed");
 
     static time_t nowEpochRaw();
     static bool validPersistedState(const PersistedState &state);
     static void migratePersistedState(PersistedState &state);
     static uint32_t snapshotCrc32(const PersistedSnapshot &snapshot);
     static bool validSnapshot(const PersistedSnapshot &snapshot);
-    static bool validSnapshotV1Bytes(const void *data, size_t size);
+    // Widens a 14-metric state at `bytes` (already moved into a PersistedState
+    // slot) in place. False when a non-empty state is not 14 metrics.
+    static bool widenLegacyState(uint8_t *bytes);
+    // Rewrites a v1 or v2 snapshot read raw into `snapshot` as v3 in place.
+    // Checks magic, version, size and the old CRC first; the caller then runs
+    // validSnapshot() on the result.
+    static bool migrateOldSnapshot(PersistedSnapshot &snapshot, size_t size);
     static bool generationNewer(uint32_t lhs, uint32_t rhs);
     class ScopedLock {
     public:

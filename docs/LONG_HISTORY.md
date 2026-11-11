@@ -31,8 +31,8 @@ ChartsHistory publishes each completed interval to one registered listener
 (`ChartsHistory::setIntervalListener`) at the moment it is appended to the ring. The
 `CompletedInterval` carries the ring `Entry` plus RAM-only statistics the persisted entry
 rounds away: the exact `double` sum per metric and the second (0-299) at which the low
-and the high were first reached. The `Entry` layout and the flash schema (v3) are
-unchanged.
+and the high were first reached. The `Entry` layout and the flash schema are those of
+[FIVE_MINUTE_HISTORY.md](FIVE_MINUTE_HISTORY.md) (v4 since outdoor temperature).
 
 Only intervals with a trusted UTC start and at least one valid metric are published.
 Gaps, intervals started without trusted time, and intervals discarded or refused by the
@@ -51,9 +51,11 @@ gaps, untrusted time, backward clock, single listener).
 (start a multiple of 900 seconds). The first header column, `start_utc_v1`, also carries
 the format version. Then, for each metric in ChartsHistory order with the keys
 DailyExtremaHistory already uses (`co2`, `temperature`, ... `optional_gas`), six columns:
-`<key>_sum,<key>_count,<key>_min,<key>_min_s,<key>_max,<key>_max_s`. The last column,
-`optional_gas_type`, names which optional gas sensor produced `optional_gas_*` (0 = none),
-so a reader can show the right unit.
+`<key>_sum,<key>_count,<key>_min,<key>_min_s,<key>_max,<key>_max_s` (the last metric is
+`outdoor_temp`). Then `optional_gas_type` names which optional gas sensor produced
+`optional_gas_*` (0 = none), so a reader can show the right unit, and the last column,
+`outdoor_temp_source`, is the word `api` when `outdoor_temp_*` has data and empty when it
+has none (any other word, or a mismatch, is refused).
 
 - `_sum` is the exact double sum (`%.17g`); low and high are floats (`%.9g`); both round
   trip bit for bit. `_min_s`/`_max_s` are the seconds into the quarter (0-899) at which the

@@ -130,7 +130,9 @@ void test_sensor_series_use_the_units_table_and_the_fitted_gas_unit() {
     Series series[MultiChartSelection::kMaxSeries];
     size_t count = 0;
     TEST_ASSERT_TRUE(MultiChartSelection::sensorSeries("ppb", series, MultiChartSelection::kMaxSeries, count));
-    TEST_ASSERT_EQUAL_UINT32(ChartsHistory::kMetricCount, count);
+    // Every sensor metric; outdoor temperature is not a sensor series (device
+    // charts only, Daniel Nov 9 2026), so it is the one left out.
+    TEST_ASSERT_EQUAL_UINT32(ChartsHistory::kMetricCount - 1, count);
     bool seen[ChartsHistory::kMetricCount] = {};
     for (size_t i = 0; i < count; ++i) {
         seen[series[i].id] = true;
@@ -138,7 +140,9 @@ void test_sensor_series_use_the_units_table_and_the_fitted_gas_unit() {
         if (series[i].id == ChartsHistory::METRIC_TEMPERATURE) TEST_ASSERT_EQUAL_STRING("C", series[i].unit);
         if (series[i].id == ChartsHistory::METRIC_PM25) TEST_ASSERT_EQUAL_STRING("ug/m3", series[i].unit);
     }
-    for (bool s : seen) TEST_ASSERT_TRUE(s);
+    for (int m = 0; m < ChartsHistory::kMetricCount; ++m) {
+        TEST_ASSERT_EQUAL(m != ChartsHistory::METRIC_OUTDOOR_TEMP, seen[m]);
+    }
     Selection s;
     TEST_ASSERT_TRUE(s.init(series, count));
     // ppm, C, %, hPa, idx, ppb, #/cm3, ug/m3 (HCHO and the ozone sensor share ppb).

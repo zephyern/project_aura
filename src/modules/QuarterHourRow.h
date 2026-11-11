@@ -30,13 +30,18 @@ constexpr uint32_t kQuarterSeconds = 900;
 constexpr const char *kStartColumn = "start_utc_v1";
 constexpr const char *kOptionalGasTypeColumn = "optional_gas_type";
 constexpr size_t kFieldsPerMetric = 6;
-constexpr size_t kFieldCount = 1 + ChartsHistory::kMetricCount * kFieldsPerMetric + 1;
+// The outdoor temperature's source as a word: "api" when it has data, empty
+// otherwise ("thermometer" is reserved for a physical sensor).
+constexpr const char *kOutdoorSourceColumn = "outdoor_temp_source";
+constexpr const char *kOutdoorSourceApi = "api";
+constexpr size_t kFieldCount = 1 + ChartsHistory::kMetricCount * kFieldsPerMetric + 2;
 constexpr const char *kEndColumn = "end_utc";
 constexpr size_t kSpanFieldCount = kFieldCount + 1;
 
 struct Row {
     uint32_t start_epoch = 0;
-    // For METRIC_OPTIONAL_GAS, source is the optional gas type; 0 elsewhere.
+    // For METRIC_OPTIONAL_GAS, source is the optional gas type; for
+    // METRIC_OUTDOOR_TEMP, a ChartsHistory::OutdoorSource; 0 elsewhere.
     HistoryAggregate metrics[ChartsHistory::kMetricCount] = {};
 };
 
@@ -51,7 +56,7 @@ enum class EncodeResult : uint8_t {
     BadStart,       // zero or not a quarter-hour boundary (span: zero, or end <= start)
     NonFinite,      // sum, low or high is NaN/inf
     TimeOutside,    // low/high time outside [start, end)
-    BadSource,      // source on a non-gas metric, or gas data without a type
+    BadSource,      // source on a metric without one, or gas/outdoor data without a source
 };
 
 enum class DecodeResult : uint8_t {
