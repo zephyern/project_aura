@@ -21,12 +21,22 @@ public:
         METRIC_CO2, METRIC_TEMPERATURE, METRIC_HUMIDITY, METRIC_PRESSURE,
         METRIC_CO, METRIC_VOC, METRIC_NOX, METRIC_HCHO, METRIC_PM05,
         METRIC_PM1, METRIC_PM25, METRIC_PM4, METRIC_PM10, METRIC_OPTIONAL_GAS,
+        // Optional outdoor temperature (docs/WEATHER.md); device charts and
+        // history only, never exported on the web, MQTT or the DAC.
+        METRIC_OUTDOOR_TEMP,
         METRIC_COUNT
     };
+    // Where an outdoor reading came from. Readings from different sources are
+    // never combined. 2 is reserved for a physical outdoor thermometer.
+    enum OutdoorSource : uint8_t { OUTDOOR_SOURCE_NONE = 0, OUTDOOR_SOURCE_API = 1 };
     static constexpr int kCapacity = Config::CHART_HISTORY_24H_SAMPLES;
     static constexpr int kMetricCount = METRIC_COUNT;
     static constexpr uint32_t kStepSeconds = 300;
-    static constexpr uint16_t kSchemaVersion = 3;
+    // v4 added METRIC_OUTDOOR_TEMP and Entry::outdoor_source; v3 blocks load.
+    static constexpr uint16_t kSchemaVersion = 4;
+    static constexpr uint16_t kSchemaVersionV3 = 3;
+    // The metrics before outdoor temperature: the v2 snapshot and v3 blocks.
+    static constexpr int kLegacyMetricCount = 14;
     enum Kind : uint8_t { Gap = 0, LegacySnapshot = 1, Summary = 2 };
     struct Entry {
         uint32_t start_epoch = 0; // UTC interval start; zero means unanchored RAM history.
@@ -34,6 +44,7 @@ public:
         bool persisted = false; // Runtime/export status; recomputed when a block is loaded.
         uint8_t kind = Gap;
         uint8_t optional_gas_type = 0;
+        uint8_t outdoor_source = OUTDOOR_SOURCE_NONE; // set whenever METRIC_OUTDOOR_TEMP has data
         float values[kMetricCount] = {}; // arithmetic mean of valid new acquisitions
         float minimum[kMetricCount] = {};
         float maximum[kMetricCount] = {};
@@ -64,6 +75,12 @@ public:
     uint16_t index() const { return index_; }
     uint32_t latestEpoch() const;
     uint8_t optionalGasType() const { return optional_gas_type_; }
+    // The source long-history records must carry to belong on `metric`'s
+    // chart now: the fitted gas type, the weather API for outdoor, else 0.
+    uint8_t chartSource(Metric metric) const {
+        return metric == METRIC_OPTIONAL_GAS ? optional_gas_type_
+             : metric == METRIC_OUTDOOR_TEMP ? static_cast<uint8_t>(OUTDOOR_SOURCE_API) : 0;
+    }
     uint32_t revision() const { return revision_; }
     bool entryFromOldest(uint16_t offset, Entry &out) const;
     bool metricValueFromOldest(uint16_t offset, Metric metric, float &value, bool &valid) const;
@@ -87,8 +104,22 @@ private:
         uint8_t optional_gas_type; uint8_t reserved2;
         uint32_t epoch; uint16_t index; uint16_t count;
         uint16_t valid_mask[kCapacity];
-        float values[kMetricCount][kCapacity];
+        float values[kLegacyMetricCount][kCapacity];
     };
+    // Frozen v3 block layout (14 metrics), read once on an update and rewritten as v4.
+    struct EntryV3 {
+        uint32_t start_epoch; uint16_t valid_mask; bool persisted; uint8_t kind;
+        uint8_t optional_gas_type;
+        float values[kLegacyMetricCount]; float minimum[kLegacyMetricCount];
+        float maximum[kLegacyMetricCount]; uint16_t samples[kLegacyMetricCount];
+        uint16_t first_second[kLegacyMetricCount]; uint16_t last_second[kLegacyMetricCount];
+    };
+    struct SegmentV3 {
+        uint32_t magic; uint32_t hour; uint16_t version; uint16_t present;
+        EntryV3 entries[12];
+        uint32_t checksum;
+    };
+    static_assert(sizeof(EntryV3) == 264 && sizeof(SegmentV3) == 3184, "v3 block disk layout is frozen");
     struct Segment {
         uint32_t magic;
         uint32_t hour;
@@ -103,6 +134,11 @@ private:
     static time_t nowEpochRaw();
     static NowEpochFn now_epoch_fn_;
     static uint32_t checksum(const Segment &segment);
+    static uint32_t checksumV3(const SegmentV3 &segment);
+    // Loads `path` as a v3 block into segment_ as v4 entries (no outdoor
+    // data). False when it is not a valid v3 block. v3 blocks age out as their
+    // hours are rewritten as v4.
+    bool readSegmentV3(StorageManager &storage, const char *path);
     static bool validEntry(const Entry &entry);
     bool ensureBuffers();
     void append(const Entry &entry);

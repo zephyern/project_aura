@@ -36,13 +36,43 @@ bool ChartsHistory::ensureBuffers() {
     if (!segment_) segment_.reset(new (std::nothrow) Segment());
     return entries_ && segment_;
 }
-uint32_t ChartsHistory::checksum(const Segment &segment) {
-    const auto *bytes = reinterpret_cast<const uint8_t *>(&segment);
+namespace {
+uint32_t fnv1a(const void *data, size_t len) {
+    const auto *bytes = static_cast<const uint8_t *>(data);
     uint32_t hash = 2166136261u;
-    for (size_t i = 0; i < offsetof(Segment, checksum); ++i) hash = (hash ^ bytes[i]) * 16777619u;
+    for (size_t i = 0; i < len; ++i) hash = (hash ^ bytes[i]) * 16777619u;
     return hash;
 }
+}
+uint32_t ChartsHistory::checksum(const Segment &segment) { return fnv1a(&segment, offsetof(Segment, checksum)); }
+uint32_t ChartsHistory::checksumV3(const SegmentV3 &segment) {
+    return fnv1a(&segment, offsetof(SegmentV3, checksum));
+}
+bool ChartsHistory::readSegmentV3(StorageManager &storage, const char *path) {
+    std::unique_ptr<SegmentV3> old(new (std::nothrow) SegmentV3());
+    if (!old) { LOGW("ChartsHistory", "v3 block buffer allocation failed"); return false; }
+    if (!storage.loadBlob(path, old.get(), sizeof(SegmentV3)) || old->magic != kSegmentMagic ||
+        old->version != kSchemaVersionV3 || old->checksum != checksumV3(*old)) return false;
+    memset(segment_.get(), 0, sizeof(Segment));
+    segment_->magic = kSegmentMagic; segment_->hour = old->hour; segment_->version = kSchemaVersion;
+    segment_->present = old->present;
+    for (int slot = 0; slot < 12; ++slot) {
+        const EntryV3 &o = old->entries[slot];
+        Entry e{};
+        e.start_epoch = o.start_epoch; e.valid_mask = o.valid_mask; e.persisted = o.persisted;
+        e.kind = o.kind; e.optional_gas_type = o.optional_gas_type;
+        for (int m = 0; m < kLegacyMetricCount; ++m) {
+            e.values[m] = o.values[m]; e.minimum[m] = o.minimum[m]; e.maximum[m] = o.maximum[m];
+            e.samples[m] = o.samples[m]; e.first_second[m] = o.first_second[m]; e.last_second[m] = o.last_second[m];
+        }
+        segment_->entries[slot] = e;
+    }
+    // validEntry() still checks every entry, so a v3 bit 14 (never written) is refused.
+    return true;
+}
 bool ChartsHistory::validEntry(const Entry &e) {
+    const bool outdoor = (e.valid_mask & metricBit(METRIC_OUTDOOR_TEMP)) != 0;
+    if (outdoor ? e.outdoor_source != OUTDOOR_SOURCE_API : e.outdoor_source != OUTDOOR_SOURCE_NONE) return false;
     if (e.kind > Summary || (e.valid_mask >> kMetricCount) != 0 ||
         (e.kind == Gap && e.valid_mask != 0) ||
         (e.kind != LegacySnapshot && e.start_epoch % kStepSeconds != 0)) return false;
@@ -130,7 +160,7 @@ void ChartsHistory::load(StorageManager &storage) {
             e.start_epoch = legacy->epoch - (legacy->count - 1 - n) * kStepSeconds;
             e.kind = LegacySnapshot;
             e.optional_gas_type = legacy->optional_gas_type;
-            for (int m = 0; m < kMetricCount; ++m) if ((legacy->valid_mask[raw] & (1U << m)) &&
+            for (int m = 0; m < kLegacyMetricCount; ++m) if ((legacy->valid_mask[raw] & (1U << m)) &&
                 std::isfinite(legacy->values[m][raw])) {
                 e.valid_mask |= 1U << m;
                 e.values[m] = legacy->values[m][raw];
@@ -142,8 +172,10 @@ void ChartsHistory::load(StorageManager &storage) {
     // Select the newest 288 entries from bounded hourly blocks. Each block is <4 KiB.
     for (int file = 0; file < StorageManager::kChartsSegmentCount; ++file) {
         char path[32]; StorageManager::chartsSegmentPath(file, path, sizeof(path));
-        if (!storage.loadBlob(path, segment_.get(), sizeof(Segment)) || segment_->magic != kSegmentMagic ||
-            segment_->version != kSchemaVersion || segment_->checksum != checksum(*segment_) ||
+        const bool v4 = storage.loadBlob(path, segment_.get(), sizeof(Segment)) &&
+                        segment_->magic == kSegmentMagic && segment_->version == kSchemaVersion &&
+                        segment_->checksum == checksum(*segment_);
+        if ((!v4 && !readSegmentV3(storage, path)) ||
             segment_->hour % StorageManager::kChartsSegmentCount != static_cast<uint32_t>(file)) continue;
         for (int slot = 0; slot < 12; ++slot) {
             if (!(segment_->present & (1U << slot))) continue;
@@ -175,6 +207,7 @@ void ChartsHistory::finishInterval() {
         active_.valid_mask |= 1U << m;
         active_.values[m] = static_cast<float>(sums_[m] / active_.samples[m]);
     }
+    if (!active_.samples[METRIC_OUTDOOR_TEMP]) active_.outdoor_source = OUTDOOR_SOURCE_NONE;
     active_.kind = active_.valid_mask ? Summary : Gap;
     if (count_ && active_.start_epoch && active_.start_epoch <= latestEpoch()) return;
     append(active_);
@@ -339,6 +372,19 @@ void ChartsHistory::update(const SensorData &data, StorageManager &storage, bool
         data.optional_gas_ppm >= 0.0f) {
         reading.valid_mask |= metricBit(METRIC_OPTIONAL_GAS);
         reading.values[METRIC_OPTIONAL_GAS] = data.optional_gas_ppm;
+    }
+    if (data.outdoor_temp_valid && data.outdoor_temp_source != OUTDOOR_SOURCE_NONE &&
+        std::isfinite(data.outdoor_temp)) {
+        if (active_.samples[METRIC_OUTDOOR_TEMP] && active_.outdoor_source != data.outdoor_temp_source) {
+            // Never combine readings from different sources in one summary.
+            LOGW("ChartsHistory", "outdoor source changed from %u to %u; interval part dropped",
+                 static_cast<unsigned>(active_.outdoor_source), static_cast<unsigned>(data.outdoor_temp_source));
+            active_.samples[METRIC_OUTDOOR_TEMP] = 0;
+            sums_[METRIC_OUTDOOR_TEMP] = 0;
+        }
+        if (fresh_mask & metricBit(METRIC_OUTDOOR_TEMP)) active_.outdoor_source = data.outdoor_temp_source;
+        reading.valid_mask |= metricBit(METRIC_OUTDOOR_TEMP);
+        reading.values[METRIC_OUTDOOR_TEMP] = data.outdoor_temp;
     }
 
 
