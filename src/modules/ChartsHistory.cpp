@@ -21,6 +21,15 @@ constexpr uint32_t kSegmentMagic = 0x43485333;
 ChartsHistory::NowEpochFn ChartsHistory::now_epoch_fn_ = &ChartsHistory::nowEpochRaw;
 time_t ChartsHistory::nowEpochRaw() { return time(nullptr); }
 void ChartsHistory::setNowEpochFn(NowEpochFn fn) { now_epoch_fn_ = fn ? fn : &nowEpochRaw; }
+bool ChartsHistory::setIntervalListener(IntervalListener listener, void *context) {
+    if (listener && interval_listener_ &&
+        (listener != interval_listener_ || context != interval_listener_context_)) {
+        return false;
+    }
+    interval_listener_ = listener;
+    interval_listener_context_ = listener ? context : nullptr;
+    return true;
+}
 
 bool ChartsHistory::ensureBuffers() {
     if (!entries_) entries_.reset(new (std::nothrow) Entry[kCapacity]());
@@ -50,6 +59,8 @@ bool ChartsHistory::validEntry(const Entry &e) {
 void ChartsHistory::resetActive() {
     active_ = Entry{};
     memset(sums_, 0, sizeof(sums_));
+    memset(min_second_, 0, sizeof(min_second_));
+    memset(max_second_, 0, sizeof(max_second_));
     active_set_ = false;
 }
 void ChartsHistory::clear(StorageManager &storage) {
@@ -159,7 +170,15 @@ void ChartsHistory::finishInterval() {
         active_.values[m] = static_cast<float>(sums_[m] / active_.samples[m]);
     }
     active_.kind = active_.valid_mask ? Summary : Gap;
-    if (!count_ || !active_.start_epoch || active_.start_epoch > latestEpoch()) append(active_);
+    if (count_ && active_.start_epoch && active_.start_epoch <= latestEpoch()) return;
+    append(active_);
+    if (!interval_listener_ || !active_.start_epoch || active_.kind != Summary) return;
+    CompletedInterval completed;
+    completed.entry = active_;
+    memcpy(completed.sums, sums_, sizeof(sums_));
+    memcpy(completed.min_second, min_second_, sizeof(min_second_));
+    memcpy(completed.max_second, max_second_, sizeof(max_second_));
+    interval_listener_(completed, interval_listener_context_);
 }
 void ChartsHistory::flushOneSegment(StorageManager &storage, uint32_t now_ms) {
     if (retry_pending_ && now_ms - last_retry_ms_ < 10000) return;
@@ -325,9 +344,11 @@ void ChartsHistory::update(const SensorData &data, StorageManager &storage, bool
         if (!active_.samples[m]) {
             active_.minimum[m] = active_.maximum[m] = value;
             active_.first_second[m] = second;
+            min_second_[m] = max_second_[m] = second;
         } else {
-            active_.minimum[m] = std::min(active_.minimum[m], value);
-            active_.maximum[m] = std::max(active_.maximum[m], value);
+            // Strict comparisons keep the first second of an equal low/high.
+            if (value < active_.minimum[m]) { active_.minimum[m] = value; min_second_[m] = second; }
+            if (value > active_.maximum[m]) { active_.maximum[m] = value; max_second_[m] = second; }
         }
         sums_[m] += value;
         ++active_.samples[m];
