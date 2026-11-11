@@ -110,7 +110,7 @@ testing, and the 180-degree screen rotation setting for the 7" build.
 
 **UI and integration**
 - Smooth LVGL UI with night mode, custom themes, and status indicators
-- Optional chart extras, all off by default: a faded min/max band on the device charts ([docs/CHARTS_HISTORY.md](docs/CHARTS_HISTORY.md))
+- Optional chart extras, all off by default: a faded min/max band on the device charts and a Month range read from the long-term history ([docs/CHARTS_HISTORY.md](docs/CHARTS_HISTORY.md))
 - Integrated web dashboard at `/dashboard`: live state, charts, events, settings sync, DAC page, OTA firmware update
 - Easy setup: Wi-Fi AP onboarding + mDNS access (`http://<hostname>.local`)
 - Home Assistant ready: automatic MQTT discovery and ready-to-use dashboard YAML

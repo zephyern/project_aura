@@ -123,6 +123,7 @@ void UiController::update_voc_info_graph() {
     const GraphSeriesStats stats = populate_info_chart_series(objects.chart_voc_info,
                                                               series,
                                                               points,
+                                                              voc_graph_range_,
                                                               static_cast<int>(ChartsHistory::METRIC_VOC),
                                                               1.0f,
                                                               false);
@@ -259,6 +260,7 @@ void UiController::update_nox_info_graph() {
     const GraphSeriesStats stats = populate_info_chart_series(objects.chart_nox_info,
                                                               series,
                                                               points,
+                                                              nox_graph_range_,
                                                               static_cast<int>(ChartsHistory::METRIC_NOX),
                                                               1.0f,
                                                               false);
@@ -469,6 +471,7 @@ void UiController::update_optional_gas_info_graph() {
     const GraphSeriesStats stats = populate_info_chart_series(objects.chart_optional_gas_info,
                                                               series,
                                                               points,
+                                                              optional_gas_graph_range_,
                                                               static_cast<int>(ChartsHistory::METRIC_OPTIONAL_GAS),
                                                               point_scale,
                                                               true);
@@ -613,6 +616,7 @@ void UiController::update_hcho_info_graph() {
     const GraphSeriesStats stats = populate_info_chart_series(objects.chart_hcho_info,
                                                               series,
                                                               points,
+                                                              hcho_graph_range_,
                                                               static_cast<int>(ChartsHistory::METRIC_HCHO),
                                                               1.0f,
                                                               false);
@@ -749,6 +753,7 @@ void UiController::update_co2_info_graph() {
     const GraphSeriesStats stats = populate_info_chart_series(objects.chart_co2_info,
                                                               series,
                                                               points,
+                                                              co2_graph_range_,
                                                               static_cast<int>(ChartsHistory::METRIC_CO2),
                                                               1.0f,
                                                               false);
@@ -886,6 +891,7 @@ void UiController::update_co_info_graph() {
     const GraphSeriesStats stats = populate_info_chart_series(objects.chart_co_info,
                                                               series,
                                                               points,
+                                                              co_graph_range_,
                                                               static_cast<int>(ChartsHistory::METRIC_CO),
                                                               10.0f,
                                                               true);

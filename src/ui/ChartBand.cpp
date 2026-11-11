@@ -25,11 +25,15 @@ bool validPoints(const Point *points, size_t count) {
 
 // Collects one column at a time (union of spans landing on it) and joins
 // equal neighbouring columns into one rectangle before handing it on.
+// Columns outside [x_min, x_max] (band points beyond the line's first or last
+// point) are dropped, like LVGL clips the line to the chart.
 class Columns {
 public:
-    Columns(RectSink sink, void *context) : sink_(sink), context_(context) {}
+    Columns(RectSink sink, void *context, int32_t x_min, int32_t x_max)
+        : sink_(sink), context_(context), x_min_(x_min), x_max_(x_max) {}
 
     void add(int32_t x, int32_t top, int32_t bottom) {
+        if (x < x_min_ || x > x_max_) return;
         if (top > bottom) {
             const int32_t t = top;
             top = bottom;
@@ -79,6 +83,8 @@ private:
 
     RectSink sink_;
     void *context_;
+    int32_t x_min_;
+    int32_t x_max_;
     bool column_open_ = false;
     int32_t column_x_ = 0;
     int32_t column_top_ = 0;
@@ -115,7 +121,7 @@ Result forEachRect(const Point *points, size_t count, const Frame &frame, RectSi
     if (!points || !sink) return Result::BadPoint;
     if (!validPoints(points, count)) return Result::BadPoint;
 
-    Columns columns(sink, context);
+    Columns columns(sink, context, frame.x0, frame.x0 + frame.width);
     for (size_t i = 0; i < count; ++i) {
         const Point &a = points[i];
         if (!hasValue(a)) continue;

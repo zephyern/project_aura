@@ -12,7 +12,8 @@
 namespace ChartsSettings {
 
 struct Values {
-    bool band_enabled = false; // faded min/max band under the 1h/3h/24h lines
+    bool band_enabled = false;  // faded min/max band under the 1h/3h/24h lines
+    bool month_enabled = false; // Month range on the device charts
 };
 
 struct Field {
@@ -22,6 +23,7 @@ struct Field {
 
 constexpr Field kFields[] = {
     {"band_enabled", &Values::band_enabled},
+    {"month_enabled", &Values::month_enabled},
 };
 constexpr size_t kFieldCount = sizeof(kFields) / sizeof(kFields[0]);
 

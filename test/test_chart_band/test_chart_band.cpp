@@ -149,6 +149,25 @@ void test_positions_in_seconds_align_with_the_line_axis() {
     TEST_ASSERT_EQUAL_INT32(20, g_rects[0].x2);
 }
 
+void test_band_is_cut_at_the_first_and_last_column() {
+    // Line axis 10..20; band points at 0, 15 and 30 (beyond both ends).
+    Frame f = frame(0);
+    f.pos_first = 10;
+    f.pos_last = 20;
+    const std::vector<Point> points = {point(0, 40, 60), point(15, 40, 60), point(30, 40, 60)};
+    TEST_ASSERT_EQUAL(static_cast<int>(Result::Drawn), static_cast<int>(run(points, f)));
+    TEST_ASSERT_EQUAL_UINT32(1, g_rects.size());
+    TEST_ASSERT_EQUAL_INT32(10, g_rects[0].x1);
+    TEST_ASSERT_EQUAL_INT32(20, g_rects[0].x2);
+}
+
+void test_band_entirely_outside_is_empty() {
+    Frame f = frame(0);
+    f.pos_first = 10;
+    f.pos_last = 20;
+    TEST_ASSERT_EQUAL(static_cast<int>(Result::Empty), static_cast<int>(run({point(30, 1, 2)}, f)));
+}
+
 void test_no_values_is_empty() {
     const std::vector<Point> points = {gap(0), gap(1)};
     TEST_ASSERT_EQUAL(static_cast<int>(Result::Empty), static_cast<int>(run(points, frame(1))));
@@ -188,6 +207,8 @@ int main(int, char **) {
     RUN_TEST(test_band_breaks_at_gaps_like_the_line);
     RUN_TEST(test_crowded_points_take_the_union_per_column);
     RUN_TEST(test_positions_in_seconds_align_with_the_line_axis);
+    RUN_TEST(test_band_is_cut_at_the_first_and_last_column);
+    RUN_TEST(test_band_entirely_outside_is_empty);
     RUN_TEST(test_no_values_is_empty);
     RUN_TEST(test_bad_frames_draw_nothing);
     RUN_TEST(test_bad_points_draw_nothing);
