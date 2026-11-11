@@ -403,3 +403,4 @@
     "out",
     "nov",
     "dez",
+    "Tudo",
