@@ -21,6 +21,10 @@ struct ChartMetricSpec {
 };
 
 uint16_t chartWindowPoints(const String &window_arg, const char *&window_name);
+// Every chart metric, in group order (core, gases, pm).
+size_t chartMetricCount();
+// False at or past chartMetricCount().
+bool chartMetricAt(size_t index, const ChartMetricSpec *&spec);
 void chartGroupMetrics(const String &group_arg,
                        const char *&group_name,
                        const ChartMetricSpec *&metrics,
