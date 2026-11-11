@@ -181,3 +181,23 @@ test('chart settings save posts to the charts endpoint and reports a refusal', a
   assert.equal(h.calls.at(-1)[2].band_enabled,true);
   assert.equal(h.get('chartsSettingsNote').textContent,'Unknown field: x');
 });
+
+test('weather save sends the key and place only when given', () => {
+  const h=harness();
+  assert.deepEqual(JSON.parse(JSON.stringify(h.context.weatherSettingsPayload(false, '', null))), {enabled:false});
+  assert.deepEqual(JSON.parse(JSON.stringify(h.context.weatherSettingsPayload(true, 'abc123',
+    {lat:40.72, lon:-74.3, label:'Millburn, New Jersey, US', extra:1}))),
+    {enabled:true, api_key:'abc123', location:{lat:40.72, lon:-74.3, label:'Millburn, New Jersey, US'}});
+});
+
+test('weather state shows key presence, place and status, never a key', () => {
+  const h=harness();
+  assert.equal(h.context.weatherStateText({key_saved:false, location_set:false, status:'off', status_text:'Off'}),
+    'No API key saved. No place picked. Status: Off.');
+  assert.equal(h.context.weatherStateText({key_saved:true, location_set:true, place_label:'Millburn, New Jersey, US',
+    status:'ok', status_text:'OK', temp_c:7.46}),
+    'API key saved. Place: Millburn, New Jersey, US. Status: OK (7.5 \u00b0C).');
+  assert.equal(h.context.weatherStateText({key_saved:true, location_set:true, place_label:'X',
+    status:'key_rejected', status_text:'Bad API key', temp_c:3}),
+    'API key saved. Place: X. Status: Bad API key.');
+});

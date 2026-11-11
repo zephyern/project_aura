@@ -9,6 +9,7 @@
 
 #include "web/WebChartsApiHandlers.h"
 #include "web/WebChartsSettingsHandlers.h"
+#include "web/WebWeatherHandlers.h"
 #include "web/WebDailyHistoryHandlers.h"
 #include "web/WebDacApiHandlers.h"
 #include "web/WebHandlersSupport.h"
@@ -338,6 +339,22 @@ void charts_settings_get_handle() {
 void charts_settings_post_handle() {
     with_ota_busy([](WebHandlerContext &context, bool ota_busy) {
         WebChartsSettingsHandlers::handlePost(context, ota_busy, WebHandlersSupport::otaBusyJson());
+    });
+}
+
+void weather_settings_get_handle() {
+    with_context([](WebHandlerContext &context) { WebWeatherHandlers::handleSettingsGet(context); });
+}
+
+void weather_settings_post_handle() {
+    with_ota_busy([](WebHandlerContext &context, bool ota_busy) {
+        WebWeatherHandlers::handleSettingsPost(context, ota_busy, WebHandlersSupport::otaBusyJson());
+    });
+}
+
+void weather_geocode_handle() {
+    with_ota_busy([](WebHandlerContext &context, bool ota_busy) {
+        WebWeatherHandlers::handleGeocode(context, ota_busy, WebHandlersSupport::otaBusyJson());
     });
 }
 

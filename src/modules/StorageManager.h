@@ -53,6 +53,15 @@ public:
     bool saveRtcMode(Config::RtcMode mode);
     bool saveHistorySettings(bool log_enabled, StorageHealth::FullAction full_action);
     bool saveChartsSettings(const ChartsSettings::Values &charts);
+    // A confirmed geocoding match (docs/WEATHER.md).
+    struct WeatherLocation {
+        double lat = 0.0;
+        double lon = 0.0;
+        String label;
+    };
+    // Weather on/off in one save; `new_api_key` / `location` replace the saved
+    // ones when not null. All or nothing: a failed save changes nothing.
+    bool saveWeatherSettings(bool enabled, const String *new_api_key, const WeatherLocation *location);
     bool saveDacAutoState(bool auto_mode, bool auto_armed);
 
     bool loadVocState(uint8_t *out, size_t len) const;

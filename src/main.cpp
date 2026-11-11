@@ -46,6 +46,8 @@
 #include "modules/ChartsHistory.h"
 #include "modules/DailyExtremaHistory.h"
 #include "modules/LongHistory.h"
+#include "modules/WeatherManager.h"
+#include "modules/WeatherTask.h"
 #include "modules/NetworkManager.h"
 #include "modules/MqttManager.h"
 #include "modules/SensorManager.h"
@@ -77,6 +79,7 @@ PressureHistory pressureHistory;
 ChartsHistory chartsHistory;
 SdCardManager sdCardManager;
 LongHistory longHistory(sdCardManager);
+WeatherManager weatherManager;
 // Exactly one daily history runs, chosen once at boot by history.log_enabled:
 // the upstream DailyExtremaHistory when it is off, LongHistory when it is on.
 bool upstreamDailyActive = false;
@@ -747,6 +750,13 @@ void setup()
         upstreamDailyActive = true;
     }
     networkManager.attachDailyHistory(sdCardManager, dailyExtremaHistory, long_history_on ? &longHistory : nullptr);
+    // Optional outdoor temperature (docs/WEATHER.md); the task starts even when
+    // off so turning it on from the web page needs no restart.
+    weatherManager.configure(storage.config().weather_enabled, storage.config().weather_api_key,
+                             storage.config().weather_location_set, storage.config().weather_lat,
+                             storage.config().weather_lon);
+    WeatherTask::begin(weatherManager);
+    networkManager.attachWeather(weatherManager);
     const AppInit::LvglInitResult lvgl_result = AppInit::initLvglAndUi(init_ctx, board);
     lvgl_ready = lvgl_result.ui_ready;
     operational_ready = RuntimeReadinessPolicy::operational(board_ready, lvgl_ready);
@@ -1047,6 +1057,9 @@ void loop()
         space.known = sd_status.filesystem_total_bytes != 0;
         space.free_bytes = sd_status.filesystem_free_bytes;
         longHistory.poll(history_now, system_time_trusted, space);
+    }
+    if (weatherManager.due(millis())) {
+        WeatherTask::kick(system_time_trusted, networkManager.isConnected());
     }
     chartsRuntimeState.update(chartsHistory);
     webRuntimeState.update(currentData, sensorManager.isWarmupActive(), fanControl);

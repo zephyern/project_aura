@@ -30,6 +30,7 @@ class SensorManager;
 class SdCardManager;
 class DailyExtremaHistory;
 class LongHistory;
+class WeatherManager;
 
 class AuraNetworkManager {
 public:
@@ -60,6 +61,7 @@ public:
     // `longHistory` is null unless the long-term history log is on.
     void attachDailyHistory(SdCardManager &sdCard, DailyExtremaHistory &dailyExtrema,
                             LongHistory *longHistory);
+    void attachWeather(WeatherManager &weather);
     void attachCommandQueue(NetworkCommandQueue &commandQueue);
     void setStateChangeCallback(StateChangeCallback cb, void *ctx);
     void poll();

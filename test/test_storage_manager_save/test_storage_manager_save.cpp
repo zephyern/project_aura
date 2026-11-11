@@ -833,6 +833,49 @@ void test_save_history_settings_persists_and_rolls_back() {
                       static_cast<int>(reloaded.config().history_full_action));
 }
 
+void test_save_weather_settings_defaults_off_persists_and_rolls_back() {
+    StorageManager storage;
+    storage.begin();
+    TEST_ASSERT_FALSE(storage.config().weather_enabled);
+    TEST_ASSERT_EQUAL_UINT32(0, storage.config().weather_api_key.length());
+    TEST_ASSERT_FALSE(storage.config().weather_location_set);
+
+    const String key("abc123");
+    StorageManager::WeatherLocation loc;
+    loc.lat = 40.7245;
+    loc.lon = -74.3045;
+    loc.label = "Millburn, New Jersey, US";
+    TEST_ASSERT_TRUE(storage.saveWeatherSettings(true, &key, &loc));
+
+    StorageManager::preserveTestPersistenceForNextBegin();
+    StorageManager reloaded;
+    reloaded.begin();
+    TEST_ASSERT_TRUE(reloaded.config().weather_enabled);
+    TEST_ASSERT_EQUAL_STRING("abc123", reloaded.config().weather_api_key.c_str());
+    TEST_ASSERT_TRUE(reloaded.config().weather_location_set);
+    TEST_ASSERT_TRUE(reloaded.config().weather_lat > 40.7244 && reloaded.config().weather_lat < 40.7246);
+    TEST_ASSERT_TRUE(reloaded.config().weather_lon < -74.3044 && reloaded.config().weather_lon > -74.3046);
+    TEST_ASSERT_EQUAL_STRING("Millburn, New Jersey, US", reloaded.config().weather_place_label.c_str());
+
+    // Null key and location keep the saved ones.
+    TEST_ASSERT_TRUE(reloaded.saveWeatherSettings(false, nullptr, nullptr));
+    TEST_ASSERT_FALSE(reloaded.config().weather_enabled);
+    TEST_ASSERT_EQUAL_STRING("abc123", reloaded.config().weather_api_key.c_str());
+    TEST_ASSERT_TRUE(reloaded.config().weather_location_set);
+
+    StorageManager::setTestForceSaveFailure(true);
+    const String other("zzz");
+    StorageManager::WeatherLocation loc2;
+    loc2.lat = 1;
+    loc2.lon = 2;
+    loc2.label = "Elsewhere";
+    TEST_ASSERT_FALSE(reloaded.saveWeatherSettings(true, &other, &loc2));
+    StorageManager::setTestForceSaveFailure(false);
+    TEST_ASSERT_FALSE(reloaded.config().weather_enabled);
+    TEST_ASSERT_EQUAL_STRING("abc123", reloaded.config().weather_api_key.c_str());
+    TEST_ASSERT_EQUAL_STRING("Millburn, New Jersey, US", reloaded.config().weather_place_label.c_str());
+}
+
 void test_save_charts_settings_defaults_off_persists_and_rolls_back() {
     StorageManager storage;
     storage.begin();
@@ -862,6 +905,7 @@ int main(int, char **) {
     UNITY_BEGIN();
     RUN_TEST(test_save_charts_settings_defaults_off_persists_and_rolls_back);
     RUN_TEST(test_save_history_settings_persists_and_rolls_back);
+    RUN_TEST(test_save_weather_settings_defaults_off_persists_and_rolls_back);
     RUN_TEST(test_save_wifi_settings_preserves_spaces);
     RUN_TEST(test_save_wifi_settings_rolls_back_on_failure);
     RUN_TEST(test_save_wifi_enterprise_settings_persists_certs);
