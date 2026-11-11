@@ -45,15 +45,11 @@
 #include "modules/PressureHistory.h"
 #include "modules/ChartsHistory.h"
 #include "modules/DailyExtremaHistory.h"
+#include "modules/LongHistory.h"
 #include "modules/NetworkManager.h"
 #include "modules/MqttManager.h"
 #include "modules/SensorManager.h"
 #include "modules/SdCardManager.h"
-#include "modules/QuarterHourLogger.h"
-#include "modules/DailySummary.h"
-#include "modules/HourlySummary.h"
-#include "modules/SummaryWriter.h"
-#include "modules/WeeklySummary.h"
 #include "modules/TimeManager.h"
 #include "modules/FanControl.h"
 #include "web/WebRuntime.h"
@@ -80,14 +76,10 @@ StorageManager storage;
 PressureHistory pressureHistory;
 ChartsHistory chartsHistory;
 SdCardManager sdCardManager;
-QuarterHourLogger quarterHourLogger(sdCardManager);
-const HourlySummary::Level hourlyLevel;
-SummaryWriter hourlySummary(sdCardManager, hourlyLevel);
-const DailySummary::Level dailyLevel;
-SummaryWriter dailySummary(sdCardManager, dailyLevel);
-const WeeklySummary::Level weeklyLevel;
-SummaryWriter weeklySummary(sdCardManager, weeklyLevel);
-uint32_t weeklyRecordsSeen = UINT32_MAX; // forces one ladder update after preparation
+LongHistory longHistory(sdCardManager);
+// Exactly one daily history runs, chosen once at boot by history.log_enabled:
+// the upstream DailyExtremaHistory when it is off, LongHistory when it is on.
+bool upstreamDailyActive = false;
 DailyExtremaHistory dailyExtremaHistory;
 AuraNetworkManager networkManager;
 MqttManager mqttManager;
@@ -737,23 +729,22 @@ void setup()
         (void)drain_runtime_panel_fault_domain();
     }
     sdCardManager.begin(board);
-    dailyExtremaHistory.begin(sdCardManager, temp_units_c);
-    networkManager.attachDailyHistory(sdCardManager, dailyExtremaHistory);
-    // The card is prepared (tail repair, last row) on the first poll once ready.
-    if (!quarterHourLogger.attach(chartsHistory)) {
-        LOGE("History", "charts interval listener already taken; long-term history disabled");
-    } else if (!quarterHourLogger.addRowListener(&SummaryWriter::rowThunk, &hourlySummary)) {
-        LOGE("History", "hourly summary could not listen to 15-minute rows; long-term history disabled");
-    } else if (!quarterHourLogger.addRowListener(&SummaryWriter::rowThunk, &dailySummary)) {
-        LOGE("History", "daily summary could not listen to 15-minute rows; long-term history disabled");
-    } else if (!quarterHourLogger.addRowListener(&SummaryWriter::rowThunk, &weeklySummary)) {
-        LOGE("History", "weekly summary could not listen to 15-minute rows; long-term history disabled");
+    // One daily history at a time (docs/LONG_HISTORY.md): with the long-term
+    // log on, the upstream daily history is not started and its files are
+    // left as they are; the web routes then serve the long-term history.
+    // If the log is on but cannot attach (logged), no daily history runs at
+    // all rather than silently switching back to the upstream one.
+    const bool long_history_on = storage.config().history_log_enabled;
+    if (long_history_on) {
+        // Units only: the web download converts with the current setting.
+        dailyExtremaHistory.setPreferredUnitsC(temp_units_c);
+        // The card is prepared (tail repair, last row) on the first poll once ready.
+        if (longHistory.attach(chartsHistory)) longHistory.setEnabled(true);
     } else {
-        quarterHourLogger.setEnabled(storage.config().history_log_enabled);
-        hourlySummary.setEnabled(storage.config().history_log_enabled);
-        dailySummary.setEnabled(storage.config().history_log_enabled);
-        weeklySummary.setEnabled(storage.config().history_log_enabled);
+        dailyExtremaHistory.begin(sdCardManager, temp_units_c);
+        upstreamDailyActive = true;
     }
+    networkManager.attachDailyHistory(sdCardManager, dailyExtremaHistory, long_history_on ? &longHistory : nullptr);
     const AppInit::LvglInitResult lvgl_result = AppInit::initLvglAndUi(init_ctx, board);
     lvgl_ready = lvgl_result.ui_ready;
     operational_ready = RuntimeReadinessPolicy::operational(board_ready, lvgl_ready);
@@ -905,7 +896,7 @@ void loop()
             if (!pressureHistory.flush(storage)) {
                 LOGW("Restart", "pressure history flush failed; previous snapshot preserved");
             }
-            dailyExtremaHistory.flush();
+            if (upstreamDailyActive) dailyExtremaHistory.flush();
             if (!sdCardManager.end()) {
                 LOGW("Restart", "SD card did not unmount cleanly before restart");
             }
@@ -919,7 +910,7 @@ void loop()
 
     const bool ota_busy = WebHandlersIsOtaBusy();
     sdCardManager.poll(millis(), ota_busy || restart_request_pending || !panel_i2c_ready);
-    if (sdCardManager.takeRecoverySuccess()) dailyExtremaHistory.storageRecovered();
+    if (sdCardManager.takeRecoverySuccess() && upstreamDailyActive) dailyExtremaHistory.storageRecovered();
     // Health may be false precisely because the port is paused, but a
     // permanently disabled shared I2C bus must never be followed by an OTA
     // resume that restarts touch traffic.
@@ -1049,22 +1040,7 @@ void loop()
     }
     if (!wake_background_paused) {
         const time_t history_now = time(nullptr);
-        quarterHourLogger.poll(history_now, system_time_trusted);
-        hourlySummary.poll(history_now, system_time_trusted, quarterHourLogger.prepared());
-        dailySummary.poll(history_now, system_time_trusted, quarterHourLogger.prepared());
-        weeklySummary.poll(history_now, system_time_trusted, quarterHourLogger.prepared());
-        const SummaryWriter::Status weekly = weeklySummary.status();
-        if (weekly.state == SummaryWriter::State::Recording) {
-            const uint32_t seen = weekly.records_written + weekly.records_rebuilt;
-            if (seen != weeklyRecordsSeen) {
-                weeklyRecordsSeen = seen;
-                WeeklySummary::LadderStats ladder;
-                if (WeeklySummary::updateLadder(sdCardManager, ladder) != WeeklySummary::LadderResult::Updated) {
-                    LOGE("History", "weekly ladder update failed (%u)",
-                         static_cast<unsigned>(sdCardManager.lastFailureKind()));
-                }
-            }
-        }
+        longHistory.poll(history_now, system_time_trusted);
     }
     chartsRuntimeState.update(chartsHistory);
     webRuntimeState.update(currentData, sensorManager.isWarmupActive(), fanControl);
@@ -1102,10 +1078,10 @@ void loop()
     // history only updates on data changes, so do not defer this transition to
     // a future sensor sample.
     system_time_trusted = timeManager.isSystemTimeTrusted();
-    if (sensor_poll.data_changed) {
+    if (upstreamDailyActive && sensor_poll.data_changed) {
         dailyExtremaHistory.update(currentData, now, system_time_trusted);
     }
-    if (!wake_background_paused) {
+    if (upstreamDailyActive && !wake_background_paused) {
         dailyExtremaHistory.poll(now);
     }
     if (!wake_background_paused && sensor_i2c_ready) {

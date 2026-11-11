@@ -29,6 +29,7 @@ class DisplayThresholdManager;
 class SensorManager;
 class SdCardManager;
 class DailyExtremaHistory;
+class LongHistory;
 
 class AuraNetworkManager {
 public:
@@ -56,7 +57,9 @@ public:
     void attachWebUiBridge(WebUiBridge &webUiBridge);
     void attachDisplayThresholds(DisplayThresholdManager &displayThresholds);
     void attachSensorManager(SensorManager &sensorManager);
-    void attachDailyHistory(SdCardManager &sdCard, DailyExtremaHistory &dailyExtrema);
+    // `longHistory` is null unless the long-term history log is on.
+    void attachDailyHistory(SdCardManager &sdCard, DailyExtremaHistory &dailyExtrema,
+                            LongHistory *longHistory);
     void attachCommandQueue(NetworkCommandQueue &commandQueue);
     void setStateChangeCallback(StateChangeCallback cb, void *ctx);
     void poll();
