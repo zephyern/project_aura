@@ -206,6 +206,40 @@ public:
         failure_kind = DailyStorageFailureKind::None;
         return true;
     }
+
+    // Directories are implied by the files below them.
+    DirListResult listDir(const char *path, DirEntryFn fn, void *context) const override {
+        if (!ready || !path || !fn) {
+            return DirListResult::Failed;
+        }
+        std::string prefix(path);
+        if (prefix.empty() || prefix.back() != '/') prefix += '/';
+        std::map<std::string, bool> entries;
+        const auto collect = [&](const std::string &file) {
+            if (file.rfind(prefix, 0) != 0) return;
+            const std::string rest = file.substr(prefix.size());
+            const size_t slash = rest.find('/');
+            entries[rest.substr(0, slash)] = slash != std::string::npos;
+        };
+        for (const auto &it : text_files) collect(it.first);
+        for (const auto &it : binary_files) collect(it.first);
+        if (entries.empty()) {
+            return DirListResult::Absent;
+        }
+        for (const auto &it : entries) {
+            if (!fn(it.first.c_str(), it.second, context)) break;
+        }
+        return DirListResult::Listed;
+    }
+
+    DirRemoveResult removeEmptyDir(const char *path) override {
+        if (!ready || !path) {
+            return DirRemoveResult::Failed;
+        }
+        const auto any = [](const char *, bool, void *) { return false; };
+        return listDir(path, any, nullptr) == DirListResult::Listed ? DirRemoveResult::NotEmpty
+                                                                   : DirRemoveResult::Absent;
+    }
 };
 
 void set_basic_data(SensorData &data, int co2, float temp, float pm25) {

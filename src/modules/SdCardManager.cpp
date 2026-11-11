@@ -6,6 +6,7 @@
 
 #include "modules/SdCardManager.h"
 
+#include <dirent.h>
 #include <errno.h>
 #include <string.h>
 #include <sys/stat.h>
@@ -715,8 +716,16 @@ SdCardManager::Status SdCardManager::status() const {
     return result;
 }
 
+const char *SdCardManager::mountRoot() const {
+#ifdef UNIT_TEST
+    return test_mount_root_.c_str();
+#else
+    return kMountPoint;
+#endif
+}
+
 String SdCardManager::fullPath(const char *relative_path) const {
-    String full = kMountPoint;
+    String full = mountRoot();
     if (!relative_path || relative_path[0] == '\0') {
         return full;
     }
@@ -729,13 +738,13 @@ String SdCardManager::fullPath(const char *relative_path) const {
 
 bool SdCardManager::ensureParentDirsLocked(const char *relative_path, const char *operation) const {
     String path = fullPath(relative_path);
-    const int start = strlen(kMountPoint);
+    const int start = strlen(mountRoot());
     for (int i = start + 1; i < static_cast<int>(path.length()); ++i) {
         if (!path_has_parent_char(path[i])) {
             continue;
         }
         String dir(path.c_str(), static_cast<size_t>(i));
-        if (dir.length() <= strlen(kMountPoint)) {
+        if (dir.length() <= strlen(mountRoot())) {
             continue;
         }
         errno = 0;
@@ -1485,6 +1494,144 @@ bool SdCardManager::removeFile(const char *path) {
     }
     unlock();
     return ok;
+}
+
+DirListResult SdCardManager::listDir(const char *path, DirEntryFn fn, void *context) const {
+    if (!path || !fn) {
+        recordFailure("list_dir", "validate", EINVAL, DailyStorageFailureKind::Invalid, false);
+        return DirListResult::Failed;
+    }
+    if (!lock()) {
+        recordFailure("list_dir", "lock", EBUSY, DailyStorageFailureKind::Busy, false);
+        return DirListResult::Failed;
+    }
+    const String full = fullPath(path);
+    errno = 0;
+    DIR *dir = opendir(full.c_str());
+    if (!dir) {
+        if (errno == ENOENT) {
+            unlock();
+            return DirListResult::Absent;
+        }
+        const int error_code = current_errno_or_io();
+        recordFailure("list_dir", "open", error_code, classifyErrno(error_code), false);
+        unlock();
+        return DirListResult::Failed;
+    }
+    bool ok = true;
+    int error_code = 0;
+    const char *stage = "";
+    for (;;) {
+        errno = 0;
+        const dirent *entry = readdir(dir);
+        if (!entry) {
+            if (errno != 0) {
+                ok = false;
+                error_code = current_errno_or_io();
+                stage = "read";
+            }
+            break;
+        }
+        if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) {
+            continue;
+        }
+        // d_type is filled by both the ESP-IDF FAT VFS and the host; stat only
+        // if a filesystem leaves it unknown.
+        bool is_dir = entry->d_type == DT_DIR;
+        if (entry->d_type == DT_UNKNOWN) {
+            struct stat st = {};
+            const String child = full + "/" + entry->d_name;
+            errno = 0;
+            if (stat(child.c_str(), &st) != 0) {
+                ok = false;
+                error_code = current_errno_or_io();
+                stage = "stat_entry";
+                break;
+            }
+            is_dir = S_ISDIR(st.st_mode);
+        }
+        if (!fn(entry->d_name, is_dir, context)) {
+            break;
+        }
+    }
+    errno = 0;
+    if (closedir(dir) != 0 && ok) {
+        ok = false;
+        error_code = current_errno_or_io();
+        stage = "close";
+    }
+    if (ok) {
+        recordSuccess("list_dir", false);
+    } else {
+        recordFailure("list_dir", stage, error_code, classifyErrno(error_code), false);
+    }
+    unlock();
+    return ok ? DirListResult::Listed : DirListResult::Failed;
+}
+
+DirRemoveResult SdCardManager::removeEmptyDir(const char *path) {
+    if (!path || path[0] == '\0' || (path[0] == '/' && path[1] == '\0')) {
+        recordFailure("remove_dir", "validate", EINVAL, DailyStorageFailureKind::Invalid, true);
+        return DirRemoveResult::Failed;
+    }
+    if (!lock()) {
+        recordFailure("remove_dir", "lock", EBUSY, DailyStorageFailureKind::Busy, false);
+        return DirRemoveResult::Failed;
+    }
+    const String full = fullPath(path);
+    // FatFs reports rmdir of a non-empty directory as FR_DENIED, which the
+    // ESP-IDF VFS maps to EACCES, the same as a read-only card. Check for
+    // entries first so a non-empty directory is never mistaken for a fault.
+    errno = 0;
+    DIR *dir = opendir(full.c_str());
+    if (!dir) {
+        const int error_code = current_errno_or_io();
+        unlock();
+        if (error_code == ENOENT) {
+            return DirRemoveResult::Absent;
+        }
+        recordFailure("remove_dir", "open", error_code, classifyErrno(error_code), true);
+        return DirRemoveResult::Failed;
+    }
+    bool has_entry = false;
+    int read_error = 0;
+    for (;;) {
+        errno = 0;
+        const dirent *entry = readdir(dir);
+        if (!entry) {
+            read_error = errno;
+            break;
+        }
+        if (strcmp(entry->d_name, ".") != 0 && strcmp(entry->d_name, "..") != 0) {
+            has_entry = true;
+            break;
+        }
+    }
+    errno = 0;
+    const bool closed = closedir(dir) == 0;
+    const int close_error = closed ? 0 : current_errno_or_io();
+    if (read_error != 0 || !closed) {
+        const int error_code = read_error != 0 ? read_error : close_error;
+        unlock();
+        recordFailure("remove_dir", read_error != 0 ? "read" : "close", error_code,
+                      classifyErrno(error_code), true);
+        return DirRemoveResult::Failed;
+    }
+    if (has_entry) {
+        unlock();
+        return DirRemoveResult::NotEmpty;
+    }
+    errno = 0;
+    if (rmdir(full.c_str()) == 0) {
+        updateSpaceInfoLocked();
+        recordSuccess("remove_dir", true);
+        unlock();
+        return DirRemoveResult::Removed;
+    }
+    const int error_code = current_errno_or_io();
+    unlock();
+    recordFailure("remove_dir", "rmdir", error_code, classifyErrno(error_code), true);
+    return DirRemoveResult::Failed;
 }
 
 FILE *SdCardManager::openReadUnlocked(const char *relative_path) const {

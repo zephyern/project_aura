@@ -97,6 +97,8 @@ public:
         bool (*history_present)(void *) = nullptr;
     };
     void setTestBackend(TestBackend backend) { test_backend_ = backend; }
+    // Host tests only: put the card's files under a real host directory.
+    void setTestMountRoot(const char *root) { test_mount_root_ = root ? root : kMountPoint; }
     void runRecoveryForTest();
 #endif
     Status status() const;
@@ -121,6 +123,8 @@ public:
     bool readBinary(const char *path, void *out, size_t len, size_t &out_len) const override;
     bool writeBinaryAtomic(const char *path, const void *data, size_t len) override;
     bool removeFile(const char *path) override;
+    DirListResult listDir(const char *path, DirEntryFn fn, void *context) const override;
+    DirRemoveResult removeEmptyDir(const char *path) override;
     DailyStorageFailureKind lastFailureKind() const override;
 
 private:
@@ -215,5 +219,7 @@ private:
     mutable std::timed_mutex file_mutex_test_;
     mutable std::mutex status_mutex_test_;
     TestBackend test_backend_;
+    String test_mount_root_ = kMountPoint;
 #endif
+    const char *mountRoot() const;
 };
