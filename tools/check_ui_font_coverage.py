@@ -41,6 +41,8 @@ class FontCheck:
     font_path: Path
     strings_paths: tuple[Path, ...]
     full_table: bool = False
+    # Code points drawn by firmware code rather than taken from the string tables.
+    extra: tuple[int, ...] = ()
 
 
 def repo_root() -> Path:
@@ -127,8 +129,16 @@ def checks(root: Path) -> list[FontCheck]:
         strings / f"UiStrings.{locale}.inc"
         for locale in ("en", "de", "es", "fr", "it", "ptbr", "nl", "pl", "fi")
     )
+    # The en dash of the long-term history alerts and the month/year arrows
+    # around the chart title (docs/LONG_HISTORY.md), both in the 18 px font.
+    history_glyphs = (0x2013, 0x2039, 0x203A)
     return [
-        FontCheck(fonts / f"ui_font_jet_reg_{size}.c", latin_strings, full_table=(size == 18))
+        FontCheck(
+            fonts / f"ui_font_jet_reg_{size}.c",
+            latin_strings,
+            full_table=(size == 18),
+            extra=history_glyphs if size == 18 else (),
+        )
         for size in (14, 18)
     ] + [
         FontCheck(
@@ -150,6 +160,7 @@ def main() -> int:
     indices = status_indices(repo_root())
     for check in checks(repo_root()):
         required = required_codepoints(check.strings_paths, None if check.full_table else indices)
+        required.update(check.extra)
         available = font_codepoints(check.font_path)
         missing = sorted(required - available)
         if missing:

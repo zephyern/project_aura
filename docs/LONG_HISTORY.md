@@ -303,3 +303,13 @@ and °F, size pass equals stream pass, clear all removes every group and the old
 files, a failed removal is reported, clear today across two UTC files with summaries
 rebuilt, operations refused when off), `scripts/tests/dashboard-sd-recovery.test.mjs`
 (both confirm texts with the log on and off).
+
+## Glyphs
+
+The long-term history alerts use an en dash (U+2013) and the month and year charts put
+‹ › (U+2039/U+203A) either side of the chart title. Both are drawn with the 18 px
+JetBrains Mono font, so the three code points are in `jet_reg_18`'s symbols in
+`ui/aura-lvgl.eez-project`, and `src/ui/ui_font_jet_reg_18.c` was regenerated with EEZ
+Studio 0.27.1's bundled lv_font_conv 1.5.3 using the options recorded in its header
+plus the three symbols (the only other change is the recorded output path).
+`tools/check_ui_font_coverage.py` requires them.
