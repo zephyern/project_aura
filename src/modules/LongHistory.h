@@ -67,6 +67,16 @@ public:
 
     // Earliest local day ("YYYY-MM-DD") of any record; false when there is none.
     bool firstDay(char *out, size_t len) const;
+    // The same as a day key (YYYYMMDD).
+    bool firstDayKey(uint32_t &day_key) const;
+    // Readers for the device's long chart ranges (docs/CHARTS_HISTORY.md),
+    // called from the main loop. Each record goes to `fn` in time order,
+    // followed by the summary still in progress when it belongs to the range.
+    // Busy: a web operation holds the history; try again later.
+    enum class ChartRead : uint8_t { Read, Off, Busy, Failed };
+    using ChartRecordFn = void (*)(const QuarterHourRow::SpanRow &row, void *context);
+    // Hourly records starting in [start, end).
+    ChartRead hourlyChart(uint32_t start, uint32_t end, ChartRecordFn fn, void *context) const;
     // Local day key and largest sample count of today's record so far.
     bool currentDay(uint32_t &day_key, uint32_t &sample_count) const;
     bool lastWriteOk() const;

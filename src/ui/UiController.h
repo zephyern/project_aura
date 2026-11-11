@@ -18,6 +18,8 @@
 #include "ui/StorageStatusMessage.h"
 #include "ui/ChartBand.h"
 #include "ui/ChartPlot.h"
+#include "ui/ChartPeriod.h"
+#include "ui/LongChartSeries.h"
 #include <vector>
 #include "web/WebUiBridge.h"
 #include <lvgl.h>
@@ -30,6 +32,8 @@ class MqttManager;
 class ChartsHistory;
 class DailyExtremaHistory;
 class LongHistory;
+struct _objects_t; // ui/screens.h (EEZ generated)
+typedef struct _objects_t objects_t;
 class ThemeManager;
 class BacklightManager;
 class NightModeManager;
@@ -140,6 +144,7 @@ private:
         TEMP_GRAPH_RANGE_1H = 0,
         TEMP_GRAPH_RANGE_3H,
         TEMP_GRAPH_RANGE_24H,
+        TEMP_GRAPH_RANGE_MONTH, // charts.month_enabled; docs/CHARTS_HISTORY.md
     };
     enum GraphZoneTone : uint8_t {
         GRAPH_ZONE_NONE = 0,
@@ -251,6 +256,7 @@ private:
     GraphSeriesStats populate_info_chart_series(lv_obj_t *chart,
                                                 lv_chart_series_t *series,
                                                 uint16_t points,
+                                                TempGraphRange range,
                                                 int metric_id,
                                                 float point_scale,
                                                 bool require_non_negative,
@@ -267,6 +273,49 @@ private:
     void hide_chart_band();
     static void on_chart_band_draw_cb(lv_event_t *e);
     void draw_chart_band(lv_layer_t *layer);
+    // The long ranges (Month): one row per range-button group, so the new
+    // buttons are bound, styled, shown and handled by one table, not per sensor.
+    struct RangeGroup {
+        lv_obj_t *objects_t::*month_button;
+        lv_obj_t *objects_t::*month_label;
+        TempGraphRange UiController::*range;
+        bool UiController::*graph_mode;
+        void (UiController::*set_mode)(bool);
+        bool (*shows)(InfoSensor sensor);
+        void (*select)(UiController &ui);
+    };
+    static const RangeGroup kRangeGroups[];
+    static const size_t kRangeGroupCount;
+    enum class PeriodChartStatus : uint8_t { Ready, ClockNotSet, HistoryOff, Unreadable, Busy };
+    // What the time labels under the chart show: clock times back from the
+    // newest five-minute entry, or day numbers across [first, last].
+    struct ChartAxis {
+        enum class Kind : uint8_t { Recent, Days };
+        Kind kind = Kind::Recent;
+        bool valid = false;
+        int64_t first = 0;
+        int64_t last = 0;
+    };
+    bool chart_month_enabled() const;
+    const RangeGroup *active_range_group() const;
+    bool period_chart_active() const;
+    void on_long_range_event(lv_event_t *e, TempGraphRange range);
+    void open_month_navigator();
+    void step_chart_period(ChartPeriod::Step step);
+    uint16_t month_line_points() const;
+    bool month_bounds(uint32_t &start, uint32_t &end) const;
+    PeriodChartStatus load_month_chart(int metric_id);
+    GraphSeriesStats populate_period_chart_series(lv_obj_t *chart,
+                                                  lv_chart_series_t *series,
+                                                  uint16_t points,
+                                                  int metric_id,
+                                                  const ChartPlot::Options &options);
+    void show_chart_message(lv_obj_t *chart, const char *text);
+    void hide_chart_message();
+    void sync_long_range_buttons();
+    void sync_chart_period_header();
+    void update_long_range_texts();
+    bool format_day_tick(int64_t epoch, char *buf, size_t len) const;
     GraphAxisRange compute_standard_graph_axis(float scale_min,
                                                float scale_max,
                                                float latest_value,
@@ -871,6 +920,9 @@ private:
     static void on_temp_range_1h_event_cb(lv_event_t *e);
     static void on_temp_range_3h_event_cb(lv_event_t *e);
     static void on_temp_range_24h_event_cb(lv_event_t *e);
+    static void on_range_month_event_cb(lv_event_t *e);
+    static void on_chart_period_prev_event_cb(lv_event_t *e);
+    static void on_chart_period_next_event_cb(lv_event_t *e);
     static void on_rh_range_1h_event_cb(lv_event_t *e);
     static void on_rh_range_3h_event_cb(lv_event_t *e);
     static void on_rh_range_24h_event_cb(lv_event_t *e);
@@ -1136,6 +1188,25 @@ private:
     int64_t chart_band_pos_first_ = 0;
     int64_t chart_band_pos_last_ = 0;
     bool chart_band_error_logged_ = false;
+    ChartAxis chart_axis_;
+    // The Month view: the month on show, and the loaded records, kept until
+    // the sensor, month or hour (for the month in progress) changes.
+    ChartPeriod::Navigator chart_month_nav_{};
+    bool chart_month_nav_valid_ = false;
+    struct PeriodChartCache {
+        bool loaded = false;
+        int metric = -1;
+        uint8_t source = 0;
+        int32_t period = 0;
+        uint32_t hour = 0;
+        LongChartSeries::Grid line_grid{};
+        LongChartSeries::Grid band_grid{};
+        std::vector<ChartPlot::Sample> line;
+        std::vector<ChartPlot::Sample> band;
+    };
+    PeriodChartCache period_chart_;
+    lv_obj_t *chart_message_label_ = nullptr;
+    lv_obj_t *chart_period_title_ = nullptr;
     lv_obj_t *temp_graph_label_min_ = nullptr;
     lv_obj_t *temp_graph_label_now_ = nullptr;
     lv_obj_t *temp_graph_label_max_ = nullptr;

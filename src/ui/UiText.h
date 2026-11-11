@@ -344,5 +344,17 @@ inline const char *DacStatusStopped() { return UiStrings::text(UiStrings::TextId
 inline const char *DacOutputUnknown() { return UiStrings::text(UiStrings::TextId::DacOutputUnknown); }
 inline const char *DacConnectNetwork() { return UiStrings::text(UiStrings::TextId::DacConnectNetwork); }
 inline const char *LabelAboutTextFormat() { return UiStrings::text(UiStrings::TextId::LabelAboutTextFormat); }
+inline const char *LabelChartRangeMonth() { return UiStrings::text(UiStrings::TextId::LabelChartRangeMonth); }
+inline const char *LabelChartPeriodTitle() { return UiStrings::text(UiStrings::TextId::LabelChartPeriodTitle); }
+inline const char *MsgChartHistoryOff() { return UiStrings::text(UiStrings::TextId::MsgChartHistoryOff); }
+inline const char *MsgChartHistoryUnreadable() { return UiStrings::text(UiStrings::TextId::MsgChartHistoryUnreadable); }
+inline const char *MsgChartClockNotSet() { return UiStrings::text(UiStrings::TextId::MsgChartClockNotSet); }
+// month: 1..12 (the twelve names are consecutive keys).
+static_assert(static_cast<int>(UiStrings::TextId::LabelMonthName12) ==
+                  static_cast<int>(UiStrings::TextId::LabelMonthName1) + 11,
+              "month names must be consecutive");
+inline const char *MonthName(int month) {
+    return UiStrings::text(static_cast<UiStrings::TextId>(static_cast<int>(UiStrings::TextId::LabelMonthName1) + month - 1));
+}
 
 } // namespace UiText

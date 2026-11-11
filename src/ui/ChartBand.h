@@ -52,6 +52,8 @@ using RectSink = void (*)(const Rect &rect, void *context);
 // a value. BadFrame: zero size, pos_last <= pos_first or value_max <=
 // value_min. BadPoint: a point with low > high, only one of low/high set,
 // or positions going backwards. Nothing is drawn unless the result is Drawn.
+// Points may lie before pos_first or after pos_last; the band is cut at the
+// chart's first and last column.
 enum class Result : uint8_t { Drawn, Empty, BadFrame, BadPoint };
 
 // Columns are one pixel wide, the envelope interpolated linearly between

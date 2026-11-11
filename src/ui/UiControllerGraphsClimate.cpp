@@ -225,6 +225,7 @@ void UiController::update_temperature_info_graph() {
     const GraphSeriesStats stats = populate_info_chart_series(objects.chart_temp_info,
                                                               series,
                                                               points,
+                                                              temp_graph_range_,
                                                               static_cast<int>(ChartsHistory::METRIC_TEMPERATURE),
                                                               10.0f,
                                                               false,
@@ -328,6 +329,7 @@ void UiController::update_humidity_info_graph() {
     const GraphSeriesStats stats = populate_info_chart_series(objects.chart_rh_info,
                                                               series,
                                                               points,
+                                                              rh_graph_range_,
                                                               static_cast<int>(ChartsHistory::METRIC_HUMIDITY),
                                                               10.0f,
                                                               false);
