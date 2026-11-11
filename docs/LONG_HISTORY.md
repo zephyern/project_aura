@@ -246,3 +246,22 @@ weekly) the grouping never changes, so they never trigger.
 Host tests: `test/test_daily_summary` (local day bounds and file, 92/100-quarter DST days,
 DST day as one exact record, zone change inside a day and between days, boot rebuild equal
 to the derivation).
+
+## Week ladder
+
+`src/modules/WeeklySummary.{h,cpp}` keeps the records the lifetime chart reads:
+`/aura/history/weeks/w1.csv` with one-week UTC buckets, and `w2.csv`, `w4.csv`, ... with
+2, 4, ... weeks. Every level is anchored at Monday 2026-01-05 00:00 UTC, so each coarser
+bucket is exactly two buckets of the level below.
+
+- `w1` is written from the 15-minute rows by the shared `SummaryWriter` (live, plus the
+  rebuild at preparation), like the hourly and daily levels.
+- A level of 2N weeks starts once level N has more than 300 records (`kMaxPointsPerLevel`),
+  so the finest level that fits the whole lifetime never needs more than about 300 points.
+- Coarser levels are built from the level below through `HistoryBucket` (exact), one
+  complete bucket at a time, from the main loop whenever `w1` gains a record. They never
+  depend on the 15-minute files, so they survive when old 15-minute files are deleted.
+
+Host tests: `test/test_week_ladder` (Monday anchor and alignment, one-week record from
+15-minute rows, no coarser level at 300 records, exact 2-week level above 300 with the
+pending last bucket, level keeps updating once started).
