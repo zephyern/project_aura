@@ -152,14 +152,13 @@ void QuarterHourLogger::onInterval(const ChartsHistory::CompletedInterval &inter
             add.source = e.optional_gas_type;
         }
         HistoryAggregate &into = quarter_.metrics[m];
-        const HistoryCombineResult r = HistoryAggregates::combine(into, add);
-        if (r == HistoryCombineResult::SourceMismatch) {
-            // Never combine different gases (as ChartsHistory): keep the new one.
+        const uint8_t previous_source = into.source;
+        const HistoryMergeResult r = HistoryAggregates::mergeNewer(into, add);
+        if (r == HistoryMergeResult::Replaced) {
             LOGW(kTag, "optional gas changed from type %u to %u in quarter %u; earlier part dropped",
-                 static_cast<unsigned>(into.source), static_cast<unsigned>(add.source),
+                 static_cast<unsigned>(previous_source), static_cast<unsigned>(add.source),
                  static_cast<unsigned>(quarter_.start_epoch));
-            into = add;
-        } else if (r == HistoryCombineResult::CountOverflow) {
+        } else if (r == HistoryMergeResult::CountOverflow) {
             LOGE(kTag, "sample count overflow in quarter %u; interval dropped",
                  static_cast<unsigned>(quarter_.start_epoch));
         }
