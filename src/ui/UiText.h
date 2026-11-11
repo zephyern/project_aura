@@ -351,6 +351,12 @@ inline const char *LabelMultiChartTitle() { return UiStrings::text(UiStrings::Te
 inline const char *LabelMultiChartLines() { return UiStrings::text(UiStrings::TextId::LabelMultiChartLines); }
 inline const char *MsgMultiChartThirdUnit() { return UiStrings::text(UiStrings::TextId::MsgMultiChartThirdUnit); }
 inline const char *MsgMultiChartEmpty() { return UiStrings::text(UiStrings::TextId::MsgMultiChartEmpty); }
+inline const char *LabelOutdoorCardTitle() { return UiStrings::text(UiStrings::TextId::LabelOutdoorCardTitle); }
+inline const char *LabelOutdoorInfoTitle() { return UiStrings::text(UiStrings::TextId::LabelOutdoorInfoTitle); }
+inline const char *MsgWeatherSetUp() { return UiStrings::text(UiStrings::TextId::MsgWeatherSetUp); }
+inline const char *MsgWeatherNoInternet() { return UiStrings::text(UiStrings::TextId::MsgWeatherNoInternet); }
+inline const char *MsgWeatherBadKey() { return UiStrings::text(UiStrings::TextId::MsgWeatherBadKey); }
+inline const char *MsgWeatherServiceError() { return UiStrings::text(UiStrings::TextId::MsgWeatherServiceError); }
 inline const char *LabelChartPeriodTitle() { return UiStrings::text(UiStrings::TextId::LabelChartPeriodTitle); }
 inline const char *MsgChartHistoryOff() { return UiStrings::text(UiStrings::TextId::MsgChartHistoryOff); }
 inline const char *MsgChartHistoryUnreadable() { return UiStrings::text(UiStrings::TextId::MsgChartHistoryUnreadable); }

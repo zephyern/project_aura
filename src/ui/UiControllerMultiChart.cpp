@@ -126,6 +126,7 @@ bool UiController::info_sensor_metric(InfoSensor sensor, ChartsHistory::Metric &
         // Derived views (AQI, absolute humidity, mixing ratio, dew point) have
         // no history series of their own.
         case INFO_NONE:
+        case INFO_OUTDOOR:  // not offered in the multi-sensor chart (E2)
         case INFO_AQI:
         case INFO_AH:
         case INFO_MR:
@@ -205,6 +206,7 @@ bool UiController::ensure_multi_selection() {
 
 void UiController::on_info_chart_long_press(lv_event_t *e) {
     if (lv_event_get_code(e) != LV_EVENT_LONG_PRESSED || !multi_chart_enabled()) return;
+    if (info_sensor == INFO_OUTDOOR) return;  // outdoor is not in the multi-sensor chart
     if (!ensure_multi_selection()) return;
     ChartsHistory::Metric metric = ChartsHistory::METRIC_COUNT;
     if (info_sensor_metric(info_sensor, metric)) {

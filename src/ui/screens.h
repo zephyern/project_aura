@@ -132,6 +132,11 @@ typedef struct _objects_t {
     lv_obj_t *label_temp_value_1;
     lv_obj_t *label_temp_title_1;
     lv_obj_t *dot_temp_1;
+    lv_obj_t *card_outdoor_pro;
+    lv_obj_t *label_outdoor_unit;
+    lv_obj_t *label_outdoor_value;
+    lv_obj_t *label_outdoor_title;
+    lv_obj_t *label_outdoor_message;
     lv_obj_t *card_pm05_pro;
     lv_obj_t *label_pm05_unit;
     lv_obj_t *label_pm05_value;
@@ -833,6 +838,7 @@ typedef struct _objects_t {
     lv_obj_t *label_btn_24h_pressure_info;
     lv_obj_t *btn_3h_pressure_info;
     lv_obj_t *label_btn_3h_pressure_info;
+    lv_obj_t *label_pressure_info_24h;
     lv_obj_t *container_set_altitude;
     lv_obj_t *set_altitude_title_1;
     lv_obj_t *btn_altitude_plus_100;

@@ -213,7 +213,11 @@ void UiController::update_temperature_info_graph() {
         return;
     }
 
-    const SensorGraphProfile profile = build_temperature_graph_profile();
+    const bool outdoor = info_sensor == INFO_OUTDOOR;
+    SensorGraphProfile profile = build_temperature_graph_profile();
+    if (outdoor) {
+        profile.zone_count = 0;  // the comfort zones are for indoor air
+    }
     apply_temperature_graph_theme(profile);
 
     const uint16_t points = temperature_graph_points();
@@ -226,7 +230,8 @@ void UiController::update_temperature_info_graph() {
                                                               series,
                                                               points,
                                                               temp_graph_range_,
-                                                              static_cast<int>(ChartsHistory::METRIC_TEMPERATURE),
+                                                              static_cast<int>(outdoor ? ChartsHistory::METRIC_OUTDOOR_TEMP
+                                                                                       : ChartsHistory::METRIC_TEMPERATURE),
                                                               10.0f,
                                                               false,
                                                               GraphValueTransform::Temperature);
@@ -309,7 +314,7 @@ void UiController::update_temperature_info_graph() {
     update_temperature_time_labels();
 
     lv_chart_refresh(objects.chart_temp_info);
-    mark_active_graph_refreshed(INFO_TEMP, temp_graph_range_, points);
+    mark_active_graph_refreshed(outdoor ? INFO_OUTDOOR : INFO_TEMP, temp_graph_range_, points);
 }
 
 void UiController::update_humidity_info_graph() {

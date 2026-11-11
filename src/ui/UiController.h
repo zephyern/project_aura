@@ -27,6 +27,7 @@
 #include <lvgl.h>
 #include "modules/SensorManager.h"
 #include "modules/TimeManager.h"
+#include "modules/WeatherManager.h"
 
 class StorageManager;
 class AuraNetworkManager;
@@ -59,6 +60,7 @@ struct UiContext {
     ChartsHistory &chartsHistory;
     DailyExtremaHistory &dailyExtremaHistory;
     LongHistory &longHistory;
+    WeatherManager &weatherManager;
     TimeManager &timeManager;
     ThemeManager &themeManager;
     BacklightManager &backlightManager;
@@ -141,6 +143,7 @@ private:
         INFO_CO,
         INFO_PRESSURE_3H,
         INFO_PRESSURE_24H,
+        INFO_OUTDOOR,  // outdoor temperature (docs/WEATHER.md); shares the temperature chart
     };
     enum TempGraphRange {
         TEMP_GRAPH_RANGE_1H = 0,
@@ -242,6 +245,10 @@ private:
     bool should_show_threshold_dots() const;
     void sync_threshold_dots_visibility();
     void set_temperature_info_mode(bool graph_mode);
+    // Indoor or outdoor temperature: both use the temperature chart widgets.
+    bool temp_chart_selected() const { return info_sensor == INFO_TEMP || info_sensor == INFO_OUTDOOR; }
+    void update_outdoor_card();
+    void update_pressure_info_24h(const char *delta_text);
     void set_rh_info_mode(bool graph_mode);
     void set_voc_info_mode(bool graph_mode);
     void set_nox_info_mode(bool graph_mode);
@@ -792,6 +799,7 @@ private:
     void on_fw_update_deny_event(lv_event_t *e);
     void on_voc_reset_event(lv_event_t *e);
     void on_card_temp_event(lv_event_t *e);
+    void on_card_outdoor_event(lv_event_t *e);
     void on_card_voc_event(lv_event_t *e);
     void on_card_nox_event(lv_event_t *e);
     void on_card_voc_nox_event(lv_event_t *e);
@@ -970,6 +978,7 @@ private:
     static void on_fw_update_deny_event_cb(lv_event_t *e);
     static void on_voc_reset_event_cb(lv_event_t *e);
     static void on_card_temp_event_cb(lv_event_t *e);
+    static void on_card_outdoor_event_cb(lv_event_t *e);
     static void on_card_voc_event_cb(lv_event_t *e);
     static void on_card_nox_event_cb(lv_event_t *e);
     static void on_card_voc_nox_event_cb(lv_event_t *e);
@@ -1095,6 +1104,7 @@ private:
     ChartsHistory &chartsHistory;
     DailyExtremaHistory &dailyExtremaHistory;
     LongHistory &longHistory;
+    WeatherManager &weatherManager;
     TimeManager &timeManager;
     ThemeManager &themeManager;
     BacklightManager &backlightManager;
@@ -1218,6 +1228,13 @@ private:
     InfoSensor info_sensor = INFO_NONE;
     TempGraphRange temp_graph_range_ = TEMP_GRAPH_RANGE_3H;
     bool temp_graph_mode_ = false;
+    // The temperature chart is on screen: indoor in graph mode, or outdoor
+    // (always a chart). The range group's mode reads this.
+    bool temp_chart_shown_ = false;
+    bool weather_layout_on_ = false;
+    WeatherManager::Snapshot outdoor_shown_{};
+    bool outdoor_units_c_shown_ = true;
+    bool outdoor_card_drawn_ = false;
     bool rh_graph_mode_ = false;
     TempGraphRange rh_graph_range_ = TEMP_GRAPH_RANGE_3H;
     bool voc_graph_mode_ = false;
