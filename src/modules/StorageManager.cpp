@@ -23,6 +23,7 @@ namespace {
 // Long-term SD history settings (docs/LONG_HISTORY.md).
 constexpr const char *kHistorySection = "history";
 constexpr const char *kHistoryLogEnabledKey = "log_enabled";
+constexpr const char *kHistoryFullActionKey = "full_action";
 
 struct TextSnapshot {
     bool exists = false;
@@ -593,6 +594,20 @@ void StorageManager::saveMqttEnabled(bool enabled) {
     }
 }
 
+bool StorageManager::saveHistorySettings(bool log_enabled, StorageHealth::FullAction full_action) {
+    const bool previous_log = config_.history_log_enabled;
+    const StorageHealth::FullAction previous_action = config_.history_full_action;
+    config_.history_log_enabled = log_enabled;
+    config_.history_full_action = full_action;
+    if (!saveConfig(true)) {
+        config_.history_log_enabled = previous_log;
+        config_.history_full_action = previous_action;
+        LOGE("Storage", "failed to persist history settings");
+        return false;
+    }
+    return true;
+}
+
 bool StorageManager::saveRtcMode(Config::RtcMode mode) {
     const Config::RtcMode previous = config_.rtc_mode;
     config_.rtc_mode = mode;
@@ -884,6 +899,12 @@ bool StorageManager::loadConfig() {
     ArduinoJson::JsonObject history = root[kHistorySection].as<ArduinoJson::JsonObject>();
     if (!history.isNull()) {
         readValue(history, kHistoryLogEnabledKey, loaded.history_log_enabled);
+        ArduinoJson::JsonVariantConst full_action = history[kHistoryFullActionKey];
+        if (!full_action.isNull() &&
+            !StorageHealth::parseFullAction(full_action.as<const char *>(), loaded.history_full_action)) {
+            LOGE("Storage", "history.full_action is not auto_delete or stop_recording; keeping %s",
+                 StorageHealth::fullActionName(loaded.history_full_action));
+        }
     }
 
     ArduinoJson::JsonObject backlight = root["backlight"].as<ArduinoJson::JsonObject>();
@@ -1015,6 +1036,7 @@ bool StorageManager::saveConfigInternal() {
 
     ArduinoJson::JsonObject history = root[kHistorySection].to<ArduinoJson::JsonObject>();
     history[kHistoryLogEnabledKey] = config_.history_log_enabled;
+    history[kHistoryFullActionKey] = StorageHealth::fullActionName(config_.history_full_action);
 
     ArduinoJson::JsonObject backlight = root["backlight"].to<ArduinoJson::JsonObject>();
     backlight["timeout_s"] = config_.backlight_timeout_s;

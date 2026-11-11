@@ -810,8 +810,32 @@ void test_last_good_retry_deadline_is_rollover_safe() {
     TEST_ASSERT_EQUAL_UINT32(2, StorageManager::testLastGoodCommitAttemptCount());
 }
 
+void test_save_history_settings_persists_and_rolls_back() {
+    StorageManager storage;
+    storage.begin();
+    TEST_ASSERT_FALSE(storage.config().history_log_enabled);
+    TEST_ASSERT_EQUAL(static_cast<int>(StorageHealth::FullAction::AutoDelete),
+                      static_cast<int>(storage.config().history_full_action));
+    TEST_ASSERT_TRUE(storage.saveHistorySettings(true, StorageHealth::FullAction::StopRecording));
+
+    StorageManager::preserveTestPersistenceForNextBegin();
+    StorageManager reloaded;
+    reloaded.begin();
+    TEST_ASSERT_TRUE(reloaded.config().history_log_enabled);
+    TEST_ASSERT_EQUAL(static_cast<int>(StorageHealth::FullAction::StopRecording),
+                      static_cast<int>(reloaded.config().history_full_action));
+
+    StorageManager::setTestForceSaveFailure(true);
+    TEST_ASSERT_FALSE(reloaded.saveHistorySettings(false, StorageHealth::FullAction::AutoDelete));
+    StorageManager::setTestForceSaveFailure(false);
+    TEST_ASSERT_TRUE(reloaded.config().history_log_enabled);
+    TEST_ASSERT_EQUAL(static_cast<int>(StorageHealth::FullAction::StopRecording),
+                      static_cast<int>(reloaded.config().history_full_action));
+}
+
 int main(int, char **) {
     UNITY_BEGIN();
+    RUN_TEST(test_save_history_settings_persists_and_rolls_back);
     RUN_TEST(test_save_wifi_settings_preserves_spaces);
     RUN_TEST(test_save_wifi_settings_rolls_back_on_failure);
     RUN_TEST(test_save_wifi_enterprise_settings_persists_certs);

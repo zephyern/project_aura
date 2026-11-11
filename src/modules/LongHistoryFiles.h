@@ -31,6 +31,11 @@ enum class FindResult : uint8_t { Found, None, Failed };
 // Newest day file under kQuarterRoot by name. Entries that are not
 // YYYY/MM/YYYY-MM-DD.csv (with matching year and month) are ignored.
 FindResult findNewestQuarterFile(const DailyHistoryStorage &storage, uint32_t &utc_day_key);
+// Oldest YYYY/MM month directory under kQuarterRoot (names that do not parse
+// are ignored). The month directory may be empty.
+FindResult findOldestQuarterMonth(const DailyHistoryStorage &storage, uint32_t &utc_year, uint32_t &utc_month);
+// kQuarterRoot/YYYY/MM; false outside 2020..kLastYear or month 1..12.
+bool quarterMonthPath(uint32_t utc_year, uint32_t utc_month, char (&out)[kPathCapacity]);
 
 enum class RepairResult : uint8_t {
     Absent,          // no such file
@@ -93,6 +98,10 @@ bool weeklyFilePath(uint32_t weeks, char (&out)[kPathCapacity]);
 // whatever was removed before the failure stays removed.
 enum class TreeRemoveResult : uint8_t { Removed, Absent, Failed };
 TreeRemoveResult removeTree(DailyHistoryStorage &storage, const char *root);
+// Removes the plain files directly in `dir` whose name sorts after `after`
+// (byte order; the history file names are fixed width, so this is time order).
+TreeRemoveResult removeFilesAfter(DailyHistoryStorage &storage, const char *dir, const char *after,
+                                  uint32_t &removed);
 
 // Atomically drops every row starting at or after `cut` from a 15-minute file
 // (`span` false) or a summary file (`span` true: rows whose end is after
