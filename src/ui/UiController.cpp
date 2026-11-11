@@ -39,6 +39,7 @@
 #include "modules/MqttManager.h"
 #include "modules/SensorManager.h"
 #include "modules/DailyExtremaHistory.h"
+#include "modules/LongHistory.h"
 #include "modules/FanControl.h"
 #include "modules/TimeManager.h"
 #include "ui/ThemeManager.h"
@@ -56,6 +57,9 @@ namespace {
 AuraNetworkManager *g_expected_network_manager = nullptr;
 
 constexpr uint32_t STATUS_ROTATE_MS = 5000;
+// Sets the storage line apart from the (sensor << 2) + severity terms of the
+// alert-bar signature, so a storage change restarts the rotation too.
+constexpr uint32_t kStorageSignatureTag = 0x10000u;
 constexpr int UI_LVGL_LOCK_TIMEOUT_MS = 500;
 constexpr uint32_t UI_LVGL_QUIESCE_TIMEOUT_MS = 250U;
 constexpr int UI_LVGL_STARTUP_LOCK_TIMEOUT_MS = 2000;
@@ -348,6 +352,7 @@ UiController::UiController(const UiContext &context)
       sensorManager(context.sensorManager),
       chartsHistory(context.chartsHistory),
       dailyExtremaHistory(context.dailyExtremaHistory),
+      longHistory(context.longHistory),
       timeManager(context.timeManager),
       themeManager(context.themeManager),
       backlightManager(context.backlightManager),
@@ -3318,10 +3323,19 @@ void UiController::update_status_message(uint32_t now_ms, bool gas_warmup) {
         }
     }
 
-    uint32_t signature = static_cast<uint32_t>(count);
+    // The long-term history storage line (docs/LONG_HISTORY.md) rotates after
+    // the sensor messages; it has no severity, so the header colour and the
+    // backlight wake above ignore it.
+    storage_status_msg = StorageStatusMessage::build(longHistory.health());
+    const size_t total = count + (storage_status_msg.shown ? 1u : 0u);
+
+    uint32_t signature = static_cast<uint32_t>(total);
     for (size_t i = 0; i < count; ++i) {
         signature = signature * 131u + (static_cast<uint32_t>(messages[i].sensor) << 2) +
                     static_cast<uint32_t>(messages[i].severity);
+    }
+    if (storage_status_msg.shown) {
+        signature = signature * 131u + kStorageSignatureTag + static_cast<uint32_t>(storage_status_msg.kind);
     }
     if (signature != status_msg_signature) {
         status_msg_signature = signature;
@@ -3329,23 +3343,25 @@ void UiController::update_status_message(uint32_t now_ms, bool gas_warmup) {
         status_msg_last_ms = now_ms;
     }
 
-    status_msg_count = static_cast<uint8_t>(count);
+    status_msg_count = static_cast<uint8_t>(total);
 
-    if (count > 1 && (now_ms - status_msg_last_ms) >= STATUS_ROTATE_MS) {
-        status_msg_index = static_cast<uint8_t>((status_msg_index + 1) % count);
+    if (total > 1 && (now_ms - status_msg_last_ms) >= STATUS_ROTATE_MS) {
+        status_msg_index = static_cast<uint8_t>((status_msg_index + 1) % total);
         status_msg_last_ms = now_ms;
     }
-    if (status_msg_index >= count) {
+    if (status_msg_index >= total) {
         status_msg_index = 0;
     }
 
     const char *status_text = nullptr;
     if (!has_valid) {
         status_text = UiText::StatusInitializing();
-    } else if (count == 0) {
+    } else if (total == 0) {
         status_text = UiText::StatusAllGood();
-    } else {
+    } else if (status_msg_index < count) {
         status_text = messages[status_msg_index].text;
+    } else {
+        status_text = storage_status_msg.text;
     }
 
     if (objects.label_status_value_1) {

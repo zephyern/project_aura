@@ -15,6 +15,7 @@
 #include "modules/DisplayThresholds.h"
 #include "ui/UiCo2Workflow.h"
 #include "ui/UiDeferredUnload.h"
+#include "ui/StorageStatusMessage.h"
 #include "web/WebUiBridge.h"
 #include <lvgl.h>
 #include "modules/SensorManager.h"
@@ -25,6 +26,7 @@ class AuraNetworkManager;
 class MqttManager;
 class ChartsHistory;
 class DailyExtremaHistory;
+class LongHistory;
 class ThemeManager;
 class BacklightManager;
 class NightModeManager;
@@ -47,6 +49,7 @@ struct UiContext {
     SensorManager &sensorManager;
     ChartsHistory &chartsHistory;
     DailyExtremaHistory &dailyExtremaHistory;
+    LongHistory &longHistory;
     TimeManager &timeManager;
     ThemeManager &themeManager;
     BacklightManager &backlightManager;
@@ -949,6 +952,7 @@ private:
     SensorManager &sensorManager;
     ChartsHistory &chartsHistory;
     DailyExtremaHistory &dailyExtremaHistory;
+    LongHistory &longHistory;
     TimeManager &timeManager;
     ThemeManager &themeManager;
     BacklightManager &backlightManager;
@@ -1028,6 +1032,7 @@ private:
     uint32_t last_ui_tick_ms = 0;
     uint32_t status_msg_last_ms = 0;
     uint32_t status_msg_signature = 0;
+    StorageStatusMessage::Message storage_status_msg; // long-term history line of the alert bar
     uint8_t status_msg_index = 0;
     uint8_t status_msg_count = 0;
     uint8_t status_max_severity = 0;
