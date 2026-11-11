@@ -20,6 +20,7 @@ saver and the web API all walk that list, so a new setting is one new row there.
 | `month_enabled` | `false` | Month range on every sensor chart |
 | `year_enabled` | `false` | Year range on every sensor chart |
 | `lifetime_enabled` | `false` | Lifetime range ("All") on every sensor chart |
+| `multi_enabled` | `false` | Multi-sensor chart, opened by holding a sensor chart |
 
 - A key missing from the stored config keeps its default (off), like every other setting.
 - `StorageManager::saveChartsSettings` saves the whole section; when the save fails it puts
@@ -256,3 +257,35 @@ screen yet (the screen is the next change): `MultiChartSelection::Selection` in
 
 Host tests: `test/test_multi_chart_selection` (7 cases), `test/test_web_charts_utils` (+1).
 
+## Multi-sensor chart (`multi_enabled`)
+
+With `multi_enabled` on, **holding** (long press) any sensor chart on the info screen opens a
+full-screen chart that draws several sensors together over the last 1h, 3h or 24h. The
+chart that was held is added to the lines already chosen (or shown again if it was hidden).
+With the setting off a long press does nothing, exactly as before; turning it off while the
+screen is open returns to the sensor's own chart.
+
+- **Screen.** `page_multi_chart` (EEZ, last screen id): the title, 1h / 3h / 24h, **LINES**
+  and **BACK** in the header; the chart with one Y axis on each side, the unit above each
+  axis, times below, and a legend of the chosen lines in colour.
+- **Two Y axes.** Each unit gets its own axis (LVGL charts have exactly two: primary and
+  secondary Y, which is why two units is the limit). `MultiChartAxis::fit` picks the
+  smallest round axis (steps of 1, 2 or 5 times a power of ten) holding every visible line
+  of that unit; both axes have four divisions so they share the grid lines, and each gets
+  its own point scale and decimals so small values (e.g. 0.012 ppm) keep their detail.
+- **LINES** opens the list of every sensor, grouped under its unit, with the unit beside each
+  name. Tapping a row adds or removes that line. Picking a third unit is refused and the
+  screen says so ("Only two units fit, one per side. Remove the lines of one unit first.");
+  nothing is swapped silently.
+- **Hide a line** by tapping its legend chip; it fades and its line goes, but it stays chosen
+  and its unit keeps its axis, so tapping again brings it straight back.
+- **Values** are read exactly as each sensor's own chart reads them
+  (`UiController::read_recent_samples`, shared with the single charts) and shown in the
+  same display units (°C/°F, hPa/inHg, MSL pressure when an altitude is set). No band here.
+- The chosen lines are kept in memory until restart. A different optional gas sensor (which
+  can change its unit group) starts the selection again.
+- Each sensor has a fixed colour (`kMultiSeriesStyles`), so a line keeps its colour whatever
+  else is shown.
+
+Host tests: `test/test_multi_chart_axis` (5 cases). The screen itself is checked by the
+firmware build only; its look on the 4.3" and 7" panels has not been checked on a device.

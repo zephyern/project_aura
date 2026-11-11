@@ -404,3 +404,7 @@
     "lis",
     "gru",
     "Całość",
+    "PORÓWNAJ",
+    "LINIE",
+    "Mieszczą się tylko dwie jednostki, po jednej na stronę. Najpierw usuń linie jednej jednostki.",
+    "Dotknij LINIE, aby wybrać, co porównać.",

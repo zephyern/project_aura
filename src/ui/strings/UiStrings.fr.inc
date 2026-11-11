@@ -404,3 +404,7 @@
     "nov.",
     "déc.",
     "Tout",
+    "COMPARER",
+    "COURBES",
+    "Seules deux unités tiennent, une par côté. Retirez d'abord les courbes d'une unité.",
+    "Touchez COURBES pour choisir quoi comparer.",

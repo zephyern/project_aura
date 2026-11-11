@@ -54,6 +54,10 @@ void UiScreenFlow::processPendingScreen(UiController &owner, uint32_t now_ms) {
                 owner.current_screen_id != SCREEN_ID_PAGE_SENSORS_INFO) {
                 owner.release_all_sensor_graph_runtime_objects();
             }
+            if (previous_screen == SCREEN_ID_PAGE_MULTI_CHART &&
+                owner.current_screen_id != SCREEN_ID_PAGE_MULTI_CHART) {
+                owner.release_multi_chart_runtime_objects();
+            }
 
             if (owner.current_screen_id == SCREEN_ID_PAGE_SETTINGS) {
                 owner.temp_offset_ui_dirty = true;
@@ -63,6 +67,8 @@ void UiScreenFlow::processPendingScreen(UiController &owner, uint32_t now_ms) {
                 owner.data_dirty = true;
             } else if (owner.current_screen_id == SCREEN_ID_PAGE_SENSORS_INFO) {
                 owner.data_dirty = true;
+            } else if (owner.current_screen_id == SCREEN_ID_PAGE_MULTI_CHART) {
+                owner.enter_multi_chart();
             } else if (owner.current_screen_id == SCREEN_ID_PAGE_CLOCK) {
                 owner.datetime_ui_dirty = true;
                 owner.clock_ui_dirty = true;
