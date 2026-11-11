@@ -74,6 +74,9 @@ public:
         const char *unit;
         uint8_t decimals;
     };
+    // Metric keys, units and decimals, in ChartsHistory::Metric order. Also the
+    // column keys of the long-term history files (docs/LONG_HISTORY.md).
+    static const MetricDef &metricDef(uint8_t index);
 
 private:
     struct MetricState {
@@ -158,8 +161,6 @@ private:
     static bool validSnapshot(const PersistedSnapshot &snapshot);
     static bool validSnapshotV1Bytes(const void *data, size_t size);
     static bool generationNewer(uint32_t lhs, uint32_t rhs);
-    static const MetricDef &metricDef(uint8_t index);
-
     class ScopedLock {
     public:
         explicit ScopedLock(const DailyExtremaHistory &owner, uint32_t timeout_ms = 1000);
