@@ -11,7 +11,7 @@
 
 class UiDeferredUnload {
 public:
-    static constexpr size_t kCount = 11;
+    static constexpr size_t kCount = 12;
 
     void reset();
     void scheduleOnSwitch(int previous_screen_id, int current_screen_id, uint32_t now_ms);

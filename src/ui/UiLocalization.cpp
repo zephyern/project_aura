@@ -128,6 +128,7 @@ void UiLocalization::updateLanguageFonts(UiController &owner) {
         objects.page_main_pro,
         objects.page_settings,
         objects.page_diag,
+        objects.page_multi_chart,
         objects.page_wifi,
         objects.page_theme,
         objects.page_clock,
@@ -191,6 +192,9 @@ void UiLocalization::refreshTextsForScreen(UiController &owner, int screen_id) {
             break;
         case SCREEN_ID_PAGE_DIAG:
             owner.update_diag_texts();
+            break;
+        case SCREEN_ID_PAGE_MULTI_CHART:
+            owner.update_multi_chart_texts();
             break;
         case SCREEN_ID_PAGE_BOOT_DIAG:
             owner.update_boot_diag_texts();

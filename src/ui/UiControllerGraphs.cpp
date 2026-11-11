@@ -16,6 +16,7 @@
 #include "ui/UiText.h"
 #include "ui/ui.h"
 
+#include "ui/LvglRelease.h"
 #include "ui/UiControllerGraphsShared.h"
 #include "core/Logger.h"
 #include "src/widgets/chart/lv_chart_private.h"
@@ -25,25 +26,6 @@ static_assert(ChartBand::kNoValue == LV_CHART_POINT_NONE, "band gaps and chart g
 namespace {
 // The band is the line's colour at this opacity (charts.band_enabled).
 constexpr lv_opa_t kChartBandOpa = LV_OPA_40;
-
-void release_lvgl_obj(lv_obj_t *&obj) {
-    if (obj && lv_obj_is_valid(obj)) {
-        lv_obj_del(obj);
-    }
-    obj = nullptr;
-}
-
-void release_lvgl_obj_array(lv_obj_t **objs, uint8_t count) {
-    if (!objs) {
-        return;
-    }
-    for (uint8_t i = 0; i < count; ++i) {
-        if (objs[i] && lv_obj_is_valid(objs[i])) {
-            lv_obj_del(objs[i]);
-        }
-        objs[i] = nullptr;
-    }
-}
 
 void set_checked(lv_obj_t *btn, bool checked) {
     if (!btn) {
@@ -405,26 +387,7 @@ UiController::GraphSeriesStats UiController::populate_info_chart_series(lv_obj_t
         return stats;
     }
 
-    // The newest `points` five-minute entries, oldest first; missing ones stay invalid.
-    const uint16_t total_count = chartsHistory.count();
-    const uint16_t available = (total_count < points) ? total_count : points;
-    const uint16_t missing_prefix = points - available;
-    const uint16_t start_offset = total_count - available;
-    const ChartsHistory::Metric metric = static_cast<ChartsHistory::Metric>(metric_id);
-    chart_samples_.assign(points, ChartPlot::Sample{});
-    for (uint16_t i = missing_prefix; i < points; ++i) {
-        ChartsHistory::Entry entry;
-        if (!chartsHistory.entryFromOldest(static_cast<uint16_t>(start_offset + (i - missing_prefix)), entry) ||
-            !chartsHistory.metricValid(entry, metric)) {
-            continue;
-        }
-        ChartPlot::Sample &sample = chart_samples_[i];
-        sample.valid = true;
-        sample.has_range = chartsHistory.metricHasRange(entry, metric);
-        sample.mean = entry.values[metric];
-        sample.low = entry.minimum[metric];
-        sample.high = entry.maximum[metric];
-    }
+    read_recent_samples(static_cast<ChartsHistory::Metric>(metric_id), points, chart_samples_);
 
     chart_line_values_.resize(points);
     ChartPlot::Stats plot = ChartPlot::plotLine(chart_samples_.data(), points, options, chart_line_values_.data());
@@ -446,6 +409,30 @@ UiController::GraphSeriesStats UiController::populate_info_chart_series(lv_obj_t
     stats.scale_min = plot.scale_min;
     stats.scale_max = plot.scale_max;
     return stats;
+}
+
+void UiController::read_recent_samples(ChartsHistory::Metric metric,
+                                       uint16_t points,
+                                       std::vector<ChartPlot::Sample> &out) const {
+    // The newest `points` five-minute entries, oldest first; missing ones stay invalid.
+    const uint16_t total_count = chartsHistory.count();
+    const uint16_t available = (total_count < points) ? total_count : points;
+    const uint16_t missing_prefix = points - available;
+    const uint16_t start_offset = total_count - available;
+    out.assign(points, ChartPlot::Sample{});
+    for (uint16_t i = missing_prefix; i < points; ++i) {
+        ChartsHistory::Entry entry;
+        if (!chartsHistory.entryFromOldest(static_cast<uint16_t>(start_offset + (i - missing_prefix)), entry) ||
+            !chartsHistory.metricValid(entry, metric)) {
+            continue;
+        }
+        ChartPlot::Sample &sample = out[i];
+        sample.valid = true;
+        sample.has_range = chartsHistory.metricHasRange(entry, metric);
+        sample.mean = entry.values[metric];
+        sample.low = entry.minimum[metric];
+        sample.high = entry.maximum[metric];
+    }
 }
 
 bool UiController::chart_band_enabled() const {

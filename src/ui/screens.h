@@ -26,7 +26,8 @@ enum ScreensEnum {
     SCREEN_ID_PAGE_DAC_SETTINGS = 13,
     SCREEN_ID_PAGE_FW_UPDATE = 14,
     SCREEN_ID_PAGE_DIAG = 15,
-    _SCREEN_ID_LAST = 15
+    SCREEN_ID_PAGE_MULTI_CHART = 16,
+    _SCREEN_ID_LAST = 16
 };
 
 typedef struct _objects_t {
@@ -45,6 +46,7 @@ typedef struct _objects_t {
     lv_obj_t *page_dac_settings;
     lv_obj_t *page_fw_update;
     lv_obj_t *page_diag;
+    lv_obj_t *page_multi_chart;
     lv_obj_t *label_boot_ver;
     lv_obj_t *background_boot_diag;
     lv_obj_t *btn_diag_continue;
@@ -1058,6 +1060,26 @@ typedef struct _objects_t {
     lv_obj_t *label_btn_diag_back;
     lv_obj_t *btn_diag_clear;
     lv_obj_t *label_btn_diag_back_1;
+    lv_obj_t *background_multi_chart;
+    lv_obj_t *card_multi_chart;
+    lv_obj_t *chart_multi_chart;
+    lv_obj_t *label_multi_chart_unit_left;
+    lv_obj_t *label_multi_chart_unit_right;
+    lv_obj_t *container_multi_chart_legend;
+    lv_obj_t *container_multi_chart_lines;
+    lv_obj_t *label_multi_chart_message;
+    lv_obj_t *container_multi_chart_header;
+    lv_obj_t *label_multi_chart_title;
+    lv_obj_t *btn_multi_chart_range_1h;
+    lv_obj_t *label_btn_multi_chart_range_1h;
+    lv_obj_t *btn_multi_chart_range_3h;
+    lv_obj_t *label_btn_multi_chart_range_3h;
+    lv_obj_t *btn_multi_chart_range_24h;
+    lv_obj_t *label_btn_multi_chart_range_24h;
+    lv_obj_t *btn_multi_chart_lines;
+    lv_obj_t *label_btn_multi_chart_lines;
+    lv_obj_t *btn_multi_chart_back;
+    lv_obj_t *label_btn_multi_chart_back;
 } objects_t;
 
 extern objects_t objects;
@@ -1106,6 +1128,9 @@ void tick_screen_page_fw_update();
 
 void create_screen_page_diag();
 void tick_screen_page_diag();
+
+void create_screen_page_multi_chart();
+void tick_screen_page_multi_chart();
 
 void tick_screen_by_id(enum ScreensEnum screenId);
 void tick_screen(int screen_index);

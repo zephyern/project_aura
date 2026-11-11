@@ -16,6 +16,7 @@ struct Values {
     bool month_enabled = false; // Month range on the device charts
     bool year_enabled = false;  // Year range on the device charts
     bool lifetime_enabled = false; // Lifetime range on the device charts
+    bool multi_enabled = false;    // multi-sensor chart on the device
 };
 
 struct Field {
@@ -28,6 +29,7 @@ constexpr Field kFields[] = {
     {"month_enabled", &Values::month_enabled},
     {"year_enabled", &Values::year_enabled},
     {"lifetime_enabled", &Values::lifetime_enabled},
+    {"multi_enabled", &Values::multi_enabled},
 };
 constexpr size_t kFieldCount = sizeof(kFields) / sizeof(kFields[0]);
 

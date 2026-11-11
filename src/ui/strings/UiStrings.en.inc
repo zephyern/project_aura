@@ -404,3 +404,7 @@
     "Nov",
     "Dec",
     "All",
+    "COMPARE",
+    "LINES",
+    "Only two units fit, one per side. Remove the lines of one unit first.",
+    "Tap LINES to choose what to compare.",

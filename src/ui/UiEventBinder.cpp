@@ -47,6 +47,8 @@ lv_obj_t *UiEventBinder::screenRootById(int screen_id) {
             return objects.page_fw_update;
         case SCREEN_ID_PAGE_DIAG:
             return objects.page_diag;
+        case SCREEN_ID_PAGE_MULTI_CHART:
+            return objects.page_multi_chart;
         default:
             return nullptr;
     }
@@ -100,6 +102,8 @@ void UiEventBinder::bindAvailableEvents(UiController &owner, int screen_id) {
         {objects.card_pressure_pro, UiController::on_card_pressure_event_cb, LV_EVENT_CLICKED},
         {objects.btn_back_1, UiController::on_sensors_info_back_event_cb, LV_EVENT_CLICKED},
         {objects.btn_chart_period_prev, UiController::on_chart_period_prev_event_cb, LV_EVENT_CLICKED},
+        {objects.btn_multi_chart_back, UiController::on_multi_chart_back_event_cb, LV_EVENT_CLICKED},
+        {objects.btn_multi_chart_lines, UiController::on_multi_chart_lines_event_cb, LV_EVENT_CLICKED},
         {objects.btn_chart_period_next, UiController::on_chart_period_next_event_cb, LV_EVENT_CLICKED},
         {objects.btn_set_altitude, UiController::on_set_altitude_event_cb, LV_EVENT_CLICKED},
         {objects.btn_altitude_plus_100, UiController::on_altitude_plus_100_event_cb, LV_EVENT_CLICKED},
@@ -456,6 +460,28 @@ void UiEventBinder::bindAvailableEvents(UiController &owner, int screen_id) {
                                 reinterpret_cast<void *>(index));
         }
     }
+
+    // The multi-sensor chart's range buttons share one callback; user data
+    // carries the TempGraphRange.
+    for (size_t i = 0; i < UiController::kMultiRangeCount; ++i) {
+        lv_obj_t *btn = objects.*UiController::kMultiRanges[i].button;
+        if (!objectBelongsToScreen(btn, screen_root)) {
+            continue;
+        }
+        lv_obj_remove_event_cb(btn, UiController::on_multi_chart_range_event_cb);
+        lv_obj_add_event_cb(btn, UiController::on_multi_chart_range_event_cb, LV_EVENT_CLICKED,
+                            reinterpret_cast<void *>(static_cast<uintptr_t>(UiController::kMultiRanges[i].range)));
+    }
+
+    // Holding a sensor chart opens the multi-sensor chart (charts.multi_enabled).
+    for (size_t i = 0; i < UiController::kInfoChartCount; ++i) {
+        lv_obj_t *chart = objects.*UiController::kInfoCharts[i];
+        if (!objectBelongsToScreen(chart, screen_root)) {
+            continue;
+        }
+        lv_obj_remove_event_cb(chart, UiController::on_info_chart_long_press_event_cb);
+        lv_obj_add_event_cb(chart, UiController::on_info_chart_long_press_event_cb, LV_EVENT_LONG_PRESSED, nullptr);
+    }
 }
 
 void UiEventBinder::applyToggleStylesForAvailableObjects(UiController &owner, int screen_id) {
@@ -527,6 +553,10 @@ void UiEventBinder::applyToggleStylesForAvailableObjects(UiController &owner, in
         objects.btn_pressure_range_1h,
         objects.btn_pressure_range_3h,
         objects.btn_pressure_range_24h,
+        objects.btn_multi_chart_range_1h,
+        objects.btn_multi_chart_range_3h,
+        objects.btn_multi_chart_range_24h,
+        objects.btn_multi_chart_lines,
         objects.btn_pm25_info,
         objects.btn_pm4_info,
         objects.btn_pm10_info,

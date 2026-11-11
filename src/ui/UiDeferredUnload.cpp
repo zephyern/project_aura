@@ -22,6 +22,7 @@ const int UiDeferredUnload::kScreenIds[UiDeferredUnload::kCount] = {
     SCREEN_ID_PAGE_DAC_SETTINGS,
     SCREEN_ID_PAGE_FW_UPDATE,
     SCREEN_ID_PAGE_DIAG,
+    SCREEN_ID_PAGE_MULTI_CHART,
 };
 
 void UiDeferredUnload::reset() {
