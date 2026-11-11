@@ -173,3 +173,25 @@ be set in `/config.json`.
 Host tests: `test/test_quarter_hour_logger` (default off, exact row from three intervals,
 gaps and the poll close, restart mid-quarter with torn tail, clock behind, UTC midnight
 file switch, no card and write failure, optional gas change, single listener).
+
+## One derivation for every summary
+
+`src/modules/HistoryBucket.{h,cpp}` is the only code that turns finer records into a
+coarser bucket: hours, local days and week levels from 15-minute rows, and chart lines
+resampled from those. `Builder::begin(start, end)` opens a bucket for the UTC interval
+`[start, end)`; `add` takes 15-minute rows or other summary records in time order and
+combines each metric exactly. `deriveBucket` does the same for rows already in memory.
+
+- Only records lying wholly inside the bucket count; others are `Outside` and counted,
+  which is normal when scanning a whole file.
+- A record that starts before the previous one ended is `OutOfOrder` and an empty or
+  reversed interval is `Invalid`; both are refused and logged.
+- A partial bucket keeps its real sample count and the number of records it combined
+  (`source_records`), so a chart can tell a short hour from a full one.
+- Low and high keep the earliest UTC second they were reached, through every level.
+- When the optional gas sensor type changes inside a bucket, the newer gas replaces the
+  earlier part (`HistoryAggregates::mergeNewer`, the same rule the 15-minute logger
+  uses), counted in `Stats::gas_replaced` and logged.
+
+Host tests: `test/test_history_bucket` (brute force over raw samples, hours-then-3-hours
+equals direct, partial bucket, refused records, gas change).
