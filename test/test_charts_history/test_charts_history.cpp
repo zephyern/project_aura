@@ -112,6 +112,7 @@ void test_legacy_snapshot_is_preserved_without_invented_statistics() {
     ChartsHistory h; h.load(s); auto e=entry(h);
     TEST_ASSERT_EQUAL(ChartsHistory::LegacySnapshot,e.kind); TEST_ASSERT_EQUAL(old.epoch,e.start_epoch);
     TEST_ASSERT_FLOAT_WITHIN(.001,19,e.values[TEMP]); TEST_ASSERT_EQUAL(0,e.samples[TEMP]);
+    TEST_ASSERT_TRUE(h.metricValid(e,TEMP)); TEST_ASSERT_FALSE(h.metricHasRange(e,TEMP)); // no band for legacy
     h.update(temp(500),s,false,false,temp_mask); TEST_ASSERT_EQUAL(1,h.count());
     observe(h,s,0,20); observe(h,s,300,0,0); TEST_ASSERT_EQUAL(2,h.count());
     ChartsHistory r; r.load(s); TEST_ASSERT_EQUAL(2,r.count());
@@ -125,6 +126,8 @@ void test_optional_gas_keeps_record_identity_and_filters_current_chart() {
     auto old=entry(h); TEST_ASSERT_EQUAL(1,old.optional_gas_type); TEST_ASSERT_EQUAL(1,old.samples[GAS]);
     float v; bool valid; h.metricValueFromOldest(0,GAS,v,valid); TEST_ASSERT_FALSE(valid);
     h.metricValueFromOldest(1,GAS,v,valid); TEST_ASSERT_TRUE(valid); TEST_ASSERT_FLOAT_WITHIN(.001,.1,v);
+    TEST_ASSERT_FALSE(h.metricHasRange(old,GAS)); ChartsHistory::Entry now; h.entryFromOldest(1,now);
+    TEST_ASSERT_TRUE(h.metricHasRange(now,GAS)); TEST_ASSERT_FALSE(h.metricValid(now,TEMP));
 }
 void test_clear_removes_legacy_and_segment_history() {
     StorageManager s; s.begin(); ChartsHistory h; h.load(s);

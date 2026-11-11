@@ -52,6 +52,7 @@ public:
     bool loadWifiEapClientKey(String &out) const;
     bool saveRtcMode(Config::RtcMode mode);
     bool saveHistorySettings(bool log_enabled, StorageHealth::FullAction full_action);
+    bool saveChartsSettings(const ChartsSettings::Values &charts);
     bool saveDacAutoState(bool auto_mode, bool auto_armed);
 
     bool loadVocState(uint8_t *out, size_t len) const;

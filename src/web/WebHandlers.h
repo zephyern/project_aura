@@ -50,6 +50,8 @@ void daily_history_clear_current_day_handle();
 void daily_history_clear_future_handle();
 void history_settings_get_handle();
 void history_settings_post_handle();
+void charts_settings_get_handle();
+void charts_settings_post_handle();
 void state_handle_data();
 void events_handle_data();
 void diag_handle_data();

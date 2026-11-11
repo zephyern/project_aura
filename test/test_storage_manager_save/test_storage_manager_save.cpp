@@ -833,8 +833,34 @@ void test_save_history_settings_persists_and_rolls_back() {
                       static_cast<int>(reloaded.config().history_full_action));
 }
 
+void test_save_charts_settings_defaults_off_persists_and_rolls_back() {
+    StorageManager storage;
+    storage.begin();
+    for (const ChartsSettings::Field &field : ChartsSettings::kFields) {
+        TEST_ASSERT_FALSE_MESSAGE(storage.config().charts.*field.member, field.key);
+    }
+    ChartsSettings::Values on;
+    for (const ChartsSettings::Field &field : ChartsSettings::kFields) on.*field.member = true;
+    TEST_ASSERT_TRUE(storage.saveChartsSettings(on));
+
+    StorageManager::preserveTestPersistenceForNextBegin();
+    StorageManager reloaded;
+    reloaded.begin();
+    for (const ChartsSettings::Field &field : ChartsSettings::kFields) {
+        TEST_ASSERT_TRUE_MESSAGE(reloaded.config().charts.*field.member, field.key);
+    }
+
+    StorageManager::setTestForceSaveFailure(true);
+    TEST_ASSERT_FALSE(reloaded.saveChartsSettings(ChartsSettings::Values{}));
+    StorageManager::setTestForceSaveFailure(false);
+    for (const ChartsSettings::Field &field : ChartsSettings::kFields) {
+        TEST_ASSERT_TRUE_MESSAGE(reloaded.config().charts.*field.member, field.key);
+    }
+}
+
 int main(int, char **) {
     UNITY_BEGIN();
+    RUN_TEST(test_save_charts_settings_defaults_off_persists_and_rolls_back);
     RUN_TEST(test_save_history_settings_persists_and_rolls_back);
     RUN_TEST(test_save_wifi_settings_preserves_spaces);
     RUN_TEST(test_save_wifi_settings_rolls_back_on_failure);

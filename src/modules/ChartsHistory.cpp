@@ -99,9 +99,15 @@ bool ChartsHistory::metricValueFromOldest(uint16_t offset, Metric metric, float 
     Entry e;
     if (metric >= METRIC_COUNT || !entryFromOldest(offset, e)) return false;
     value = e.values[metric];
-    valid = (e.valid_mask & metricBit(metric)) != 0 &&
-            (metric != METRIC_OPTIONAL_GAS || e.optional_gas_type == optional_gas_type_);
+    valid = metricValid(e, metric);
     return true;
+}
+bool ChartsHistory::metricValid(const Entry &entry, Metric metric) const {
+    return metric < METRIC_COUNT && (entry.valid_mask & metricBit(metric)) != 0 &&
+           (metric != METRIC_OPTIONAL_GAS || entry.optional_gas_type == optional_gas_type_);
+}
+bool ChartsHistory::metricHasRange(const Entry &entry, Metric metric) const {
+    return metricValid(entry, metric) && entry.kind == Summary;
 }
 void ChartsHistory::load(StorageManager &storage) {
     count_ = index_ = 0;
