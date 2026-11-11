@@ -87,23 +87,31 @@ void UiLocalization::updateLanguageLabel(UiController &owner) {
     }
 }
 
-void UiLocalization::updateLanguageFonts(UiController &owner) {
-    // Pick the 14/18 px body fonts for the active language: JetBrains (Latin)
-    // for Western languages, Noto Sans SC for Chinese, Noto Sans JP for Japanese.
-    const lv_font_t *target_14 = &ui_font_jet_reg_14;
-    const lv_font_t *target_18 = &ui_font_jet_reg_18;
-    switch (owner.ui_language) {
+const lv_font_t *UiLocalization::bodyFont14(Config::Language language) {
+    switch (language) {
         case Config::Language::ZH:
-            target_14 = &ui_font_noto_sans_sc_reg_14;
-            target_18 = &ui_font_noto_sans_sc_reg_18;
-            break;
+            return &ui_font_noto_sans_sc_reg_14;
         case Config::Language::JA:
-            target_14 = &ui_font_noto_sans_jp_reg_14;
-            target_18 = &ui_font_noto_sans_jp_reg_18;
-            break;
+            return &ui_font_noto_sans_jp_reg_14;
         default:
-            break;
+            return &ui_font_jet_reg_14;
     }
+}
+
+const lv_font_t *UiLocalization::bodyFont18(Config::Language language) {
+    switch (language) {
+        case Config::Language::ZH:
+            return &ui_font_noto_sans_sc_reg_18;
+        case Config::Language::JA:
+            return &ui_font_noto_sans_jp_reg_18;
+        default:
+            return &ui_font_jet_reg_18;
+    }
+}
+
+void UiLocalization::updateLanguageFonts(UiController &owner) {
+    const lv_font_t *target_14 = bodyFont14(owner.ui_language);
+    const lv_font_t *target_18 = bodyFont18(owner.ui_language);
 
     // Any previously applied body font may still be in the tree (e.g. when
     // switching directly between two CJK languages), so replace them all.

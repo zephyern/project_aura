@@ -303,11 +303,39 @@ void test_hourly_chart_reads_the_range_and_the_hour_in_progress() {
     TEST_ASSERT_EQUAL_UINT32(20261107, first);
 }
 
+void test_daily_chart_reads_the_local_days_and_the_day_in_progress() {
+    writeQuarters(kNov8, kNov10 + 6 * kH);
+    Rig rig;
+    rig.history.poll(static_cast<time_t>(kNov10 + 6 * kH), true, LongHistory::Space{});
+    // New York local days start at 05:00 UTC in November.
+    constexpr uint32_t kLocalMidnight = 5 * kH;
+    constexpr uint32_t kYear2026 = 1767243600; // 2026-01-01 00:00 EST
+    constexpr uint32_t kYear2027 = 1798779600; // 2027-01-01 00:00 EST
+    g_chart.clear();
+    TEST_ASSERT_EQUAL(static_cast<int>(LongHistory::ChartRead::Read),
+                      static_cast<int>(rig.history.dailyChart(kYear2026, kYear2027, &collectChart, nullptr)));
+    // Nov 7 (from 19:00), Nov 8, Nov 9 from the year file, then Nov 10 still open.
+    TEST_ASSERT_EQUAL_UINT32(4, g_chart.size());
+    TEST_ASSERT_EQUAL_UINT32(kNov8 - 24 * kH + kLocalMidnight, g_chart[0].start_epoch);
+    TEST_ASSERT_EQUAL_UINT32(kNov9 + kLocalMidnight, g_chart[2].start_epoch);
+    TEST_ASSERT_EQUAL_UINT32(24 * 12, g_chart[2].metrics[TEMP].count);
+    TEST_ASSERT_EQUAL_UINT32(kNov10 + kLocalMidnight, g_chart[3].start_epoch);
+    // Only records starting inside the range.
+    g_chart.clear();
+    TEST_ASSERT_EQUAL(static_cast<int>(LongHistory::ChartRead::Read),
+                      static_cast<int>(rig.history.dailyChart(kNov9 + kLocalMidnight, kNov10 + kLocalMidnight,
+                                                              &collectChart, nullptr)));
+    TEST_ASSERT_EQUAL_UINT32(1, g_chart.size());
+    TEST_ASSERT_EQUAL_UINT32(kNov9 + kLocalMidnight, g_chart[0].start_epoch);
+}
+
 void test_chart_reads_refused_when_off() {
     Rig rig;
     rig.history.setEnabled(false);
     TEST_ASSERT_EQUAL(static_cast<int>(LongHistory::ChartRead::Off),
                       static_cast<int>(rig.history.hourlyChart(kNov9, kNov10, &collectChart, nullptr)));
+    TEST_ASSERT_EQUAL(static_cast<int>(LongHistory::ChartRead::Off),
+                      static_cast<int>(rig.history.dailyChart(kNov9, kNov10, &collectChart, nullptr)));
 }
 
 void test_operations_refused_when_off() {
@@ -404,6 +432,7 @@ int main(int, char **) {
     RUN_TEST(test_clear_today_cuts_only_today_across_two_utc_files);
     RUN_TEST(test_operations_refused_when_off);
     RUN_TEST(test_hourly_chart_reads_the_range_and_the_hour_in_progress);
+    RUN_TEST(test_daily_chart_reads_the_local_days_and_the_day_in_progress);
     RUN_TEST(test_chart_reads_refused_when_off);
     RUN_TEST(test_card_full_auto_delete_removes_the_oldest_month_only);
     RUN_TEST(test_card_full_stop_recording_deletes_nothing);

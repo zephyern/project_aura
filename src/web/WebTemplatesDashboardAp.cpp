@@ -759,6 +759,7 @@ const char kDashboardPageTemplateAp[] PROGMEM = R"HTML_DASH_AP(
           <div class="sd-actions" id="chartsSettings">
             <label><input type="checkbox" id="chartsBandEnabled"> Faded min/max band on the 1h/3h/24h charts</label>
             <label><input type="checkbox" id="chartsMonthEnabled"> Month range (needs the long-term history log)</label>
+            <label><input type="checkbox" id="chartsYearEnabled"> Year range (needs the long-term history log)</label>
             <button class="btn" type="button" id="chartsSettingsSaveBtn">Save chart settings</button>
           </div>
           <div class="sd-note" id="chartsSettingsNote" role="status" aria-live="polite"></div>
@@ -2155,6 +2156,7 @@ async function saveHistorySettings() {
 const CHART_SETTINGS = [
   { key: 'band_enabled', id: 'chartsBandEnabled' },
   { key: 'month_enabled', id: 'chartsMonthEnabled' },
+  { key: 'year_enabled', id: 'chartsYearEnabled' },
 ];
 function chartSettingsPayload(isChecked) {
   const payload = {};

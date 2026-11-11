@@ -12,6 +12,7 @@
 
 #include "config/AppConfig.h"
 #include "modules/ChartsHistory.h"
+#include "ui/UiLocalization.h"
 #include "ui/UiText.h"
 #include "ui/ui.h"
 
@@ -227,7 +228,9 @@ uint16_t UiController::graph_points_for_range(TempGraphRange range) const {
         case TEMP_GRAPH_RANGE_24H:
             return Config::CHART_HISTORY_24H_SAMPLES;
         case TEMP_GRAPH_RANGE_MONTH:
-            return month_line_points();
+            return period_line_points(LongRange::Month);
+        case TEMP_GRAPH_RANGE_YEAR:
+            return period_line_points(LongRange::Year);
         case TEMP_GRAPH_RANGE_3H:
         default:
             return Config::CHART_HISTORY_3H_STEPS;
@@ -389,8 +392,9 @@ UiController::GraphSeriesStats UiController::populate_info_chart_series(lv_obj_t
         return stats;
     }
     const ChartPlot::Options options = graph_plot_options(point_scale, require_non_negative, transform);
-    if (range == TEMP_GRAPH_RANGE_MONTH) {
-        return populate_period_chart_series(chart, series, points, metric_id, options);
+    LongRange long_range = LongRange::Month;
+    if (long_range_of(range, long_range)) {
+        return populate_period_chart_series(chart, series, points, long_range, metric_id, options);
     }
     chart_axis_ = ChartAxis{};
     hide_chart_message();
@@ -750,8 +754,8 @@ void UiController::update_graph_time_labels(lv_obj_t *graph_container,
         return;
     }
 
-    const bool day_axis = chart_axis_.kind == ChartAxis::Kind::Days;
-    if ((clear_when_points_lt_two && points < 2U) || (day_axis && !chart_axis_.valid)) {
+    const bool period_axis = chart_axis_.kind != ChartAxis::Kind::Recent;
+    if ((clear_when_points_lt_two && points < 2U) || (period_axis && !chart_axis_.valid)) {
         for (uint8_t i = 0; i < label_count; ++i) {
             if (labels[i]) {
                 safe_label_set_text(labels[i], "");
@@ -791,12 +795,17 @@ void UiController::update_graph_time_labels(lv_obj_t *graph_container,
 
         char buf[24];
         bool formatted = false;
-        if (day_axis) {
-            // Day numbers across the long chart, from its first point to its last.
+        if (period_axis) {
+            // Day numbers or month names across the long chart, from its first
+            // point to its last. Month names are words, so they take the
+            // language's body font like every other label.
+            if (chart_axis_.kind == ChartAxis::Kind::Months) {
+                lv_obj_set_style_text_font(label, UiLocalization::bodyFont14(ui_language), LV_PART_MAIN | LV_STATE_DEFAULT);
+            }
             const int64_t tick_epoch = (last_tick > 0)
                 ? chart_axis_.first + ((chart_axis_.last - chart_axis_.first) * i) / last_tick
                 : chart_axis_.first;
-            if (!format_day_tick(tick_epoch, buf, sizeof(buf))) {
+            if (!format_period_tick(tick_epoch, buf, sizeof(buf))) {
                 LOGE("Charts", "no local date for chart tick %lld", static_cast<long long>(tick_epoch));
                 buf[0] = '\0';
             }

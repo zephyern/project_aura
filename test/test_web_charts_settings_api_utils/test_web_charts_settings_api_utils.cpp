@@ -12,7 +12,7 @@ using WebChartsSettingsApiUtils::parseRequestBody;
 
 namespace {
 
-constexpr const char *kFieldList = "(fields: band_enabled, month_enabled)";
+constexpr const char *kFieldList = "(fields: band_enabled, month_enabled, year_enabled)";
 
 // Every field, all set to `value`, plus `extra` (a JSON member or "").
 String body(bool value, const char *extra = "") {
@@ -60,6 +60,7 @@ void test_unknown_field_is_named() {
 void test_missing_field_is_named() {
     assertError("{}", "Missing field: band_enabled");
     assertError("{\"band_enabled\":true}", "Missing field: month_enabled");
+    assertError("{\"band_enabled\":true,\"month_enabled\":true}", "Missing field: year_enabled");
 }
 
 void test_non_boolean_is_rejected() {

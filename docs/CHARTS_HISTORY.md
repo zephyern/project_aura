@@ -18,6 +18,7 @@ saver and the web API all walk that list, so a new setting is one new row there.
 | --- | --- | --- |
 | `band_enabled` | `false` | Faded min/max band on the 1h/3h/24h charts |
 | `month_enabled` | `false` | Month range on every sensor chart |
+| `year_enabled` | `false` | Year range on every sensor chart |
 
 - A key missing from the stored config keeps its default (off), like every other setting.
 - `StorageManager::saveChartsSettings` saves the whole section; when the save fails it puts
@@ -162,3 +163,37 @@ counts, exact three-hour merge, gaps, records off the grid, the gas source check
 refused when off), `test/test_chart_band` (cutting at the first and last column).
 
 Not verified on hardware: the look of the Month button, header and band on the real panels.
+
+## Year range (`year_enabled`)
+
+With the setting on, every range group gets a **Year** button after Month (each long range
+has its own setting, so either can be on alone). Year shows one local calendar year:
+
+- **Line and band:** one point per local day: the day's mean, and a band from its lowest to
+  its highest reading. Both come from the daily files (`/aura/history/days/YYYY.csv`, local
+  years) through `LongHistory::dailyChart`, which shares one reader with `hourlyChart`
+  (`LongHistory::chartRead`: the same lock, the same `Off`/`Busy`/`Failed` answers, records
+  limited to the range, then the day still in progress).
+- **Header:** the year ("2026") between ‹ and ›; ‹ stops at the year of the oldest record,
+  › at the current year.
+- **Time labels:** the short month name under each tick, in the language's body font (the
+  Chinese and Japanese names are characters).
+- The messages, the hourly re-read of the year in progress, the gas sensor check and the
+  return to 3h when the setting is turned off work as for Month.
+
+The grid has one 24-hour slot per day from local midnight on January 1st. A local day is
+23 to 25 hours long, but a daily record goes to the slot holding its middle, and an hour of
+daylight saving shift cannot move a middle out of its slot, so every day keeps its own point.
+
+How it is built: the Month code became a table of long ranges
+(`UiController::kLongRangeSpecs`: setting, button text, slot sizes, reader, period bounds,
+title and time labels), so Year is one new row and not a second copy. `UiLocalization`
+now names the body fonts of each language in one place (`bodyFont14`/`bodyFont18`).
+New texts: the button and twelve short month names in all 11 languages (10 machine
+translations for review).
+
+Host tests: `test/test_long_history` (`dailyChart` reads the year file and the day in
+progress, only inside the range; refused when off), `test/test_long_chart_series` (every
+day of a year with both daylight saving changes gets its own slot).
+
+Not verified on hardware: the look of the Year button and month labels on the real panels.
