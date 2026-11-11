@@ -67,6 +67,11 @@ public:
     uint32_t revision() const { return revision_; }
     bool entryFromOldest(uint16_t offset, Entry &out) const;
     bool metricValueFromOldest(uint16_t offset, Metric metric, float &value, bool &valid) const;
+    // The entry's mean for `metric` is real (valid bit set, and for the
+    // optional gas, measured by the gas sensor fitted now).
+    bool metricValid(const Entry &entry, Metric metric) const;
+    // ...and its minimum/maximum are too (only full summaries carry them).
+    bool metricHasRange(const Entry &entry, Metric metric) const;
     using NowEpochFn = time_t (*)();
     static void setNowEpochFn(NowEpochFn fn);
     // One listener receives every completed interval that is appended with a

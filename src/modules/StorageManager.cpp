@@ -24,6 +24,8 @@ namespace {
 constexpr const char *kHistorySection = "history";
 constexpr const char *kHistoryLogEnabledKey = "log_enabled";
 constexpr const char *kHistoryFullActionKey = "full_action";
+// Optional chart features (docs/CHARTS_HISTORY.md); keys in ChartsSettings::kFields.
+constexpr const char *kChartsSection = "charts";
 
 struct TextSnapshot {
     bool exists = false;
@@ -608,6 +610,17 @@ bool StorageManager::saveHistorySettings(bool log_enabled, StorageHealth::FullAc
     return true;
 }
 
+bool StorageManager::saveChartsSettings(const ChartsSettings::Values &charts) {
+    const ChartsSettings::Values previous = config_.charts;
+    config_.charts = charts;
+    if (!saveConfig(true)) {
+        config_.charts = previous;
+        LOGE("Storage", "failed to persist chart settings");
+        return false;
+    }
+    return true;
+}
+
 bool StorageManager::saveRtcMode(Config::RtcMode mode) {
     const Config::RtcMode previous = config_.rtc_mode;
     config_.rtc_mode = mode;
@@ -907,6 +920,13 @@ bool StorageManager::loadConfig() {
         }
     }
 
+    ArduinoJson::JsonObject charts = root[kChartsSection].as<ArduinoJson::JsonObject>();
+    if (!charts.isNull()) {
+        for (const ChartsSettings::Field &field : ChartsSettings::kFields) {
+            readValue(charts, field.key, loaded.charts.*field.member);
+        }
+    }
+
     ArduinoJson::JsonObject backlight = root["backlight"].as<ArduinoJson::JsonObject>();
     if (!backlight.isNull()) {
         readValue(backlight, "timeout_s", loaded.backlight_timeout_s);
@@ -1037,6 +1057,11 @@ bool StorageManager::saveConfigInternal() {
     ArduinoJson::JsonObject history = root[kHistorySection].to<ArduinoJson::JsonObject>();
     history[kHistoryLogEnabledKey] = config_.history_log_enabled;
     history[kHistoryFullActionKey] = StorageHealth::fullActionName(config_.history_full_action);
+
+    ArduinoJson::JsonObject charts = root[kChartsSection].to<ArduinoJson::JsonObject>();
+    for (const ChartsSettings::Field &field : ChartsSettings::kFields) {
+        charts[field.key] = config_.charts.*field.member;
+    }
 
     ArduinoJson::JsonObject backlight = root["backlight"].to<ArduinoJson::JsonObject>();
     backlight["timeout_s"] = config_.backlight_timeout_s;

@@ -6,7 +6,6 @@
 
 #include "ui/UiController.h"
 
-#include <float.h>
 #include <cmath>
 #include <string.h>
 #include <time.h>
@@ -17,8 +16,15 @@
 #include "ui/ui.h"
 
 #include "ui/UiControllerGraphsShared.h"
+#include "core/Logger.h"
+#include "src/widgets/chart/lv_chart_private.h"
+
+static_assert(ChartBand::kNoValue == LV_CHART_POINT_NONE, "band gaps and chart gaps use the same marker");
 
 namespace {
+// The band is the line's colour at this opacity (charts.band_enabled).
+constexpr lv_opa_t kChartBandOpa = LV_OPA_40;
+
 void release_lvgl_obj(lv_obj_t *&obj) {
     if (obj && lv_obj_is_valid(obj)) {
         lv_obj_del(obj);
@@ -140,6 +146,10 @@ void UiController::release_all_sensor_graph_runtime_objects() {
     release_lvgl_obj_array(pm1_10_graph_time_labels_, kGraphTimeTickCount);
     release_lvgl_obj_array(pressure_graph_time_labels_, kGraphTimeTickCount);
 
+    release_lvgl_obj(chart_band_overlay_);
+    chart_band_chart_ = nullptr;
+    chart_band_points_.clear();
+
     invalidate_active_graph_refresh_cache();
 }
 
@@ -156,7 +166,8 @@ bool UiController::should_refresh_active_graph(InfoSensor sensor, TempGraphRange
         (points != graph_refresh_points_) ||
         (temp_units_c != graph_refresh_units_c_) ||
         (night_mode != graph_refresh_night_mode_) ||
-        (theme_sig != graph_refresh_theme_sig_);
+        (theme_sig != graph_refresh_theme_sig_) ||
+        (chart_band_enabled() != graph_refresh_band_);
     const bool history_changed =
         (history_count != graph_refresh_history_count_) ||
         (history_epoch != graph_refresh_epoch_);
@@ -176,6 +187,7 @@ void UiController::mark_active_graph_refreshed(InfoSensor sensor, TempGraphRange
     graph_refresh_units_c_ = temp_units_c;
     graph_refresh_night_mode_ = night_mode;
     graph_refresh_theme_sig_ = active_graph_theme_signature();
+    graph_refresh_band_ = chart_band_enabled();
     graph_refresh_last_ms_ = millis();
 }
 
@@ -188,6 +200,7 @@ void UiController::invalidate_active_graph_refresh_cache() {
     graph_refresh_units_c_ = temp_units_c;
     graph_refresh_night_mode_ = night_mode;
     graph_refresh_theme_sig_ = active_graph_theme_signature();
+    graph_refresh_band_ = chart_band_enabled();
     graph_refresh_last_ms_ = 0;
 }
 
@@ -329,63 +342,201 @@ lv_chart_series_t *UiController::ensure_info_chart_series(lv_obj_t *chart, uint1
     return series;
 }
 
+float UiController::graph_temperature_transform(float value, const void *context) {
+    return temperature_to_display(value, static_cast<const UiController *>(context)->temp_units_c);
+}
+
+float UiController::graph_pressure_transform(float value, const void *context) {
+    return static_cast<const UiController *>(context)->pressure_to_display(value);
+}
+
+ChartPlot::Options UiController::graph_plot_options(float point_scale,
+                                                    bool require_non_negative,
+                                                    GraphValueTransform transform) const {
+    ChartPlot::Options options;
+    options.point_scale = point_scale;
+    options.require_non_negative = require_non_negative;
+    options.context = this;
+    switch (transform) {
+        case GraphValueTransform::None:
+            options.transform = nullptr;
+            break;
+        case GraphValueTransform::Temperature:
+            options.transform = &UiController::graph_temperature_transform;
+            break;
+        case GraphValueTransform::Pressure:
+            options.transform = &UiController::graph_pressure_transform;
+            break;
+    }
+    return options;
+}
+
 UiController::GraphSeriesStats UiController::populate_info_chart_series(lv_obj_t *chart,
                                                                         lv_chart_series_t *series,
                                                                         uint16_t points,
                                                                         int metric_id,
                                                                         float point_scale,
                                                                         bool require_non_negative,
-                                                                        bool convert_temperature_to_display) {
+                                                                        GraphValueTransform transform) {
     GraphSeriesStats stats{};
-    stats.has_values = false;
-    stats.min_value = FLT_MAX;
-    stats.max_value = -FLT_MAX;
-    stats.latest_value = NAN;
-
     if (!chart || !series || points == 0) {
+        hide_chart_band();
         return stats;
     }
 
+    // The newest `points` five-minute entries, oldest first; missing ones stay invalid.
     const uint16_t total_count = chartsHistory.count();
     const uint16_t available = (total_count < points) ? total_count : points;
     const uint16_t missing_prefix = points - available;
     const uint16_t start_offset = total_count - available;
     const ChartsHistory::Metric metric = static_cast<ChartsHistory::Metric>(metric_id);
-
-    for (uint16_t i = 0; i < points; ++i) {
-        lv_coord_t point_value = LV_CHART_POINT_NONE;
-        if (i >= missing_prefix) {
-            const uint16_t offset = start_offset + (i - missing_prefix);
-            float raw_value = 0.0f;
-            bool valid = false;
-            if (chartsHistory.metricValueFromOldest(offset, metric, raw_value, valid) &&
-                valid && std::isfinite(raw_value)) {
-                float display_value = raw_value;
-                if (convert_temperature_to_display) {
-                    display_value = temperature_to_display(raw_value, temp_units_c);
-                }
-                if (std::isfinite(display_value) && (!require_non_negative || display_value >= 0.0f)) {
-                    if (!stats.has_values) {
-                        stats.min_value = display_value;
-                        stats.max_value = display_value;
-                        stats.has_values = true;
-                    } else {
-                        if (display_value < stats.min_value) {
-                            stats.min_value = display_value;
-                        }
-                        if (display_value > stats.max_value) {
-                            stats.max_value = display_value;
-                        }
-                    }
-                    stats.latest_value = display_value;
-                    point_value = static_cast<lv_coord_t>(lroundf(display_value * point_scale));
-                }
-            }
+    chart_samples_.assign(points, ChartPlot::Sample{});
+    for (uint16_t i = missing_prefix; i < points; ++i) {
+        ChartsHistory::Entry entry;
+        if (!chartsHistory.entryFromOldest(static_cast<uint16_t>(start_offset + (i - missing_prefix)), entry) ||
+            !chartsHistory.metricValid(entry, metric)) {
+            continue;
         }
-        lv_chart_set_value_by_id(chart, series, i, point_value);
+        ChartPlot::Sample &sample = chart_samples_[i];
+        sample.valid = true;
+        sample.has_range = chartsHistory.metricHasRange(entry, metric);
+        sample.mean = entry.values[metric];
+        sample.low = entry.minimum[metric];
+        sample.high = entry.maximum[metric];
     }
 
+    const ChartPlot::Options options = graph_plot_options(point_scale, require_non_negative, transform);
+    chart_line_values_.resize(points);
+    ChartPlot::Stats plot = ChartPlot::plotLine(chart_samples_.data(), points, options, chart_line_values_.data());
+    for (uint16_t i = 0; i < points; ++i) {
+        lv_chart_set_value_by_id(chart, series, i, chart_line_values_[i]);
+    }
+    if (chart_band_enabled() && points > 1U) {
+        chart_band_points_.resize(points);
+        ChartPlot::plotBand(chart_samples_.data(), points, 0, 1, options, chart_band_points_.data(), plot);
+        show_chart_band(chart, 0, points - 1);
+    } else {
+        hide_chart_band();
+    }
+
+    stats.has_values = plot.has_values;
+    stats.min_value = plot.min_value;
+    stats.max_value = plot.max_value;
+    stats.latest_value = plot.latest_value;
+    stats.scale_min = plot.scale_min;
+    stats.scale_max = plot.scale_max;
     return stats;
+}
+
+bool UiController::chart_band_enabled() const {
+    return storage.config().charts.band_enabled;
+}
+
+void UiController::show_chart_band(lv_obj_t *chart, int64_t pos_first, int64_t pos_last) {
+    lv_obj_t *container = lv_obj_get_parent(chart);
+    if (!chart_band_overlay_ || !lv_obj_is_valid(chart_band_overlay_)) {
+        chart_band_overlay_ = lv_obj_create(container);
+        lv_obj_remove_style_all(chart_band_overlay_);
+        lv_obj_clear_flag(chart_band_overlay_,
+                          static_cast<lv_obj_flag_t>(LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLLABLE));
+        lv_obj_add_event_cb(chart_band_overlay_, &UiController::on_chart_band_draw_cb, LV_EVENT_DRAW_MAIN, nullptr);
+    } else if (lv_obj_get_parent(chart_band_overlay_) != container) {
+        lv_obj_set_parent(chart_band_overlay_, container);
+    }
+    lv_obj_update_layout(chart);
+    lv_obj_set_pos(chart_band_overlay_, lv_obj_get_x(chart), lv_obj_get_y(chart));
+    lv_obj_set_size(chart_band_overlay_, lv_obj_get_width(chart), lv_obj_get_height(chart));
+    // Just below the chart: over the zone colours, under the chart's grid and line.
+    // (lv_obj_move_to_index shifts the objects in between, chart included.)
+    const int32_t chart_index = lv_obj_get_index(chart);
+    const int32_t band_index = lv_obj_get_index(chart_band_overlay_);
+    if (band_index != chart_index - 1) {
+        lv_obj_move_to_index(chart_band_overlay_, band_index < chart_index ? chart_index - 1 : chart_index);
+    }
+    lv_obj_clear_flag(chart_band_overlay_, LV_OBJ_FLAG_HIDDEN);
+    chart_band_chart_ = chart;
+    chart_band_pos_first_ = pos_first;
+    chart_band_pos_last_ = pos_last;
+    chart_band_error_logged_ = false;
+    lv_obj_invalidate(chart_band_overlay_);
+}
+
+void UiController::hide_chart_band() {
+    chart_band_chart_ = nullptr;
+    chart_band_points_.clear();
+    if (chart_band_overlay_ && lv_obj_is_valid(chart_band_overlay_)) {
+        lv_obj_add_flag(chart_band_overlay_, LV_OBJ_FLAG_HIDDEN);
+    }
+}
+
+void UiController::on_chart_band_draw_cb(lv_event_t *e) {
+    if (instance_) instance_->draw_chart_band(lv_event_get_layer(e));
+}
+
+namespace {
+
+struct BandDraw {
+    lv_layer_t *layer;
+    lv_draw_fill_dsc_t fill;
+};
+
+void fill_band_rect(const ChartBand::Rect &rect, void *context) {
+    BandDraw &draw = *static_cast<BandDraw *>(context);
+    const lv_area_t area = {rect.x1, rect.y1, rect.x2, rect.y2};
+    lv_draw_fill(draw.layer, &draw.fill, &area);
+}
+
+const char *band_result_name(ChartBand::Result result) {
+    switch (result) {
+        case ChartBand::Result::Drawn:
+            return "drawn";
+        case ChartBand::Result::Empty:
+            return "empty";
+        case ChartBand::Result::BadFrame:
+            return "bad frame";
+        case ChartBand::Result::BadPoint:
+            return "bad point";
+    }
+    return "unknown";
+}
+
+} // namespace
+
+void UiController::draw_chart_band(lv_layer_t *layer) {
+    lv_obj_t *chart = chart_band_chart_;
+    if (!layer || !chart || !lv_obj_is_valid(chart) || chart_band_points_.empty()) {
+        return;
+    }
+    lv_chart_series_t *series = lv_chart_get_series_next(chart, nullptr);
+    if (!series) {
+        return;
+    }
+    // The line's own geometry (lv_chart.c draw_series_line).
+    const lv_chart_t *chart_data = reinterpret_cast<const lv_chart_t *>(chart);
+    const int32_t border = lv_obj_get_style_border_width(chart, LV_PART_MAIN);
+    lv_area_t coords;
+    lv_obj_get_coords(chart, &coords);
+    ChartBand::Frame frame;
+    frame.x0 = coords.x1 + lv_obj_get_style_pad_left(chart, LV_PART_MAIN) + border - lv_obj_get_scroll_left(chart);
+    frame.y0 = coords.y1 + lv_obj_get_style_pad_top(chart, LV_PART_MAIN) + border - lv_obj_get_scroll_top(chart);
+    frame.width = lv_obj_get_content_width(chart);
+    frame.height = lv_obj_get_content_height(chart);
+    frame.pos_first = chart_band_pos_first_;
+    frame.pos_last = chart_band_pos_last_;
+    frame.value_min = chart_data->ymin[LV_CHART_AXIS_PRIMARY_Y];
+    frame.value_max = chart_data->ymax[LV_CHART_AXIS_PRIMARY_Y];
+
+    BandDraw draw;
+    draw.layer = layer;
+    lv_draw_fill_dsc_init(&draw.fill);
+    draw.fill.color = lv_chart_get_series_color(chart, series);
+    draw.fill.opa = kChartBandOpa;
+    const ChartBand::Result result = ChartBand::forEachRect(
+        chart_band_points_.data(), chart_band_points_.size(), frame, &fill_band_rect, &draw);
+    if ((result == ChartBand::Result::BadFrame || result == ChartBand::Result::BadPoint) && !chart_band_error_logged_) {
+        chart_band_error_logged_ = true;
+        LOGE("UI", "chart band not drawn: %s", band_result_name(result));
+    }
 }
 
 UiController::GraphAxisRange UiController::compute_standard_graph_axis(float scale_min,

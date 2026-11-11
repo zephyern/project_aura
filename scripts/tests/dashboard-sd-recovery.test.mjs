@@ -156,3 +156,22 @@ test('history settings say when a restart is needed', () => {
     'Restart to stop the long-term history log.');
   assert.equal(h.context.historySettingsNote({log_enabled:true, restart_required:false}), '');
 });
+
+test('chart settings save sends every field and shows what the device returned', async () => {
+  const h=harness();
+  const payload=h.context.chartSettingsPayload(id => id === 'chartsBandEnabled');
+  assert.deepEqual(JSON.parse(JSON.stringify(payload)), {band_enabled:true});
+  h.get('chartsBandEnabled').checked=true;
+  h.context.renderChartSettings({success:true, band_enabled:false});
+  assert.equal(h.get('chartsBandEnabled').checked,false);
+});
+
+test('chart settings save posts to the charts endpoint and reports a refusal', async () => {
+  const h=harness();
+  h.get('chartsBandEnabled').checked=true;
+  h.context.postJson=async (url, body) => { h.calls.push(['POST',url,body]); throw new Error('Unknown field: x'); };
+  await h.context.saveChartSettings();
+  assert.equal(h.calls.at(-1)[1],'/api/charts/settings');
+  assert.equal(h.calls.at(-1)[2].band_enabled,true);
+  assert.equal(h.get('chartsSettingsNote').textContent,'Unknown field: x');
+});

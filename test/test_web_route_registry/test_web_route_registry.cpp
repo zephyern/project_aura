@@ -53,6 +53,8 @@ DEFINE_HANDLER(daily_history_clear_current_day_handle)
 DEFINE_HANDLER(daily_history_clear_future_handle)
 DEFINE_HANDLER(history_settings_get_handle)
 DEFINE_HANDLER(history_settings_post_handle)
+DEFINE_HANDLER(charts_settings_get_handle)
+DEFINE_HANDLER(charts_settings_post_handle)
 DEFINE_HANDLER(state_handle_data)
 DEFINE_HANDLER(events_handle_data)
 DEFINE_HANDLER(diag_handle_data)
@@ -256,6 +258,17 @@ void test_web_route_registry_registers_history_endpoints() {
     TEST_ASSERT_TRUE(settings_post->handler == history_settings_post_handle);
 }
 
+void test_web_route_registry_registers_charts_settings_endpoints() {
+    CapturingBackend backend = capture_routes();
+
+    const CapturedRoute *get = backend.find(RouteMethod::Get, "/api/charts/settings");
+    TEST_ASSERT_NOT_NULL(get);
+    TEST_ASSERT_TRUE(get->handler == charts_settings_get_handle);
+    const CapturedRoute *post = backend.find(RouteMethod::Post, "/api/charts/settings");
+    TEST_ASSERT_NOT_NULL(post);
+    TEST_ASSERT_TRUE(post->handler == charts_settings_post_handle);
+}
+
 void test_web_route_registry_has_no_duplicate_uri_method_pairs() {
     CapturingBackend backend = capture_routes();
 
@@ -280,6 +293,7 @@ int main(int, char **) {
     RUN_TEST(test_web_route_registry_registers_expected_route_count);
     RUN_TEST(test_web_route_registry_registers_ota_upload_endpoints);
     RUN_TEST(test_web_route_registry_registers_history_endpoints);
+    RUN_TEST(test_web_route_registry_registers_charts_settings_endpoints);
     RUN_TEST(test_web_route_registry_has_no_duplicate_uri_method_pairs);
     RUN_TEST(test_esp_http_server_route_capacity_covers_registered_routes);
     return UNITY_END();
