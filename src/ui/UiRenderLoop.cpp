@@ -113,6 +113,8 @@ void UiRenderLoop::process(UiController &owner, uint32_t now_ms) {
             owner.update_settings_header();
         } else if (owner.current_screen_id == SCREEN_ID_PAGE_SENSORS_INFO) {
             owner.update_sensor_info_ui();
+        } else if (owner.current_screen_id == SCREEN_ID_PAGE_MULTI_CHART) {
+            owner.update_multi_chart();
         }
         owner.data_dirty = false;
         did_update = true;

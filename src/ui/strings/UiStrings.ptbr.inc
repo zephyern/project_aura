@@ -404,3 +404,7 @@
     "nov",
     "dez",
     "Tudo",
+    "COMPARAR",
+    "LINHAS",
+    "Só cabem duas unidades, uma de cada lado. Remova primeiro as linhas de uma unidade.",
+    "Toque em LINHAS para escolher o que comparar.",

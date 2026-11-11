@@ -25,7 +25,7 @@ void ui_tick() {
 #include <stddef.h>
 #include <string.h>
 
-enum { UI_KNOWN_SCREEN_COUNT = SCREEN_ID_PAGE_DIAG };
+enum { UI_KNOWN_SCREEN_COUNT = SCREEN_ID_PAGE_MULTI_CHART };
 enum { UI_PAGE_SLOT_COUNT = (int)(offsetof(objects_t, label_boot_ver) / sizeof(lv_obj_t *)) };
 enum { UI_OBJECT_SLOT_COUNT = (int)(sizeof(objects_t) / sizeof(lv_obj_t *)) };
 
@@ -37,11 +37,11 @@ enum { UI_OBJECT_SLOT_COUNT = (int)(sizeof(objects_t) / sizeof(lv_obj_t *)) };
 
 UI_STATIC_ASSERT((int)UI_PAGE_SLOT_COUNT == (int)UI_KNOWN_SCREEN_COUNT,
                  "EEZ page layout changed: update ui_runtime screen tables.");
-UI_STATIC_ASSERT((int)SCREEN_ID_PAGE_DIAG == (int)UI_KNOWN_SCREEN_COUNT,
-                 "Expected diagnostics to be last screen id; update ui_runtime mapping.");
+UI_STATIC_ASSERT((int)SCREEN_ID_PAGE_MULTI_CHART == (int)UI_KNOWN_SCREEN_COUNT,
+                 "Expected the multi-sensor chart to be last screen id; update ui_runtime mapping.");
 UI_STATIC_ASSERT(offsetof(objects_t, page_boot_logo) == 0,
                  "objects_t must start with page_boot_logo.");
-UI_STATIC_ASSERT((offsetof(objects_t, page_diag) + sizeof(lv_obj_t *)) ==
+UI_STATIC_ASSERT((offsetof(objects_t, page_multi_chart) + sizeof(lv_obj_t *)) ==
                     (UI_PAGE_SLOT_COUNT * sizeof(lv_obj_t *)),
                  "Page roots must stay contiguous; update ui_runtime mapping.");
 UI_STATIC_ASSERT((sizeof(objects_t) % sizeof(lv_obj_t *)) == 0,
@@ -86,6 +86,8 @@ static lv_obj_t *getLvglObjectFromScreenId(enum ScreensEnum screenId) {
             return objects.page_fw_update;
         case SCREEN_ID_PAGE_DIAG:
             return objects.page_diag;
+        case SCREEN_ID_PAGE_MULTI_CHART:
+            return objects.page_multi_chart;
         case SCREEN_ID_PAGE_MAIN_PRO:
             return objects.page_main_pro;
         default:
@@ -137,6 +139,7 @@ static const create_screen_func_t screen_create_funcs[UI_MAX_SCREEN_ID + 1] = {
     [SCREEN_ID_PAGE_DAC_SETTINGS] = create_screen_page_dac_settings,
     [SCREEN_ID_PAGE_FW_UPDATE] = create_screen_page_fw_update,
     [SCREEN_ID_PAGE_DIAG] = create_screen_page_diag,
+    [SCREEN_ID_PAGE_MULTI_CHART] = create_screen_page_multi_chart,
 };
 
 static void createScreenById(enum ScreensEnum screenId) {

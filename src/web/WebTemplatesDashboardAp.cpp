@@ -761,6 +761,7 @@ const char kDashboardPageTemplateAp[] PROGMEM = R"HTML_DASH_AP(
             <label><input type="checkbox" id="chartsMonthEnabled"> Month range (needs the long-term history log)</label>
             <label><input type="checkbox" id="chartsYearEnabled"> Year range (needs the long-term history log)</label>
             <label><input type="checkbox" id="chartsLifetimeEnabled"> Lifetime range (needs the long-term history log)</label>
+            <label><input type="checkbox" id="chartsMultiEnabled"> Multi-sensor chart (hold a sensor chart to open it)</label>
             <button class="btn" type="button" id="chartsSettingsSaveBtn">Save chart settings</button>
           </div>
           <div class="sd-note" id="chartsSettingsNote" role="status" aria-live="polite"></div>
@@ -2159,6 +2160,7 @@ const CHART_SETTINGS = [
   { key: 'month_enabled', id: 'chartsMonthEnabled' },
   { key: 'year_enabled', id: 'chartsYearEnabled' },
   { key: 'lifetime_enabled', id: 'chartsLifetimeEnabled' },
+  { key: 'multi_enabled', id: 'chartsMultiEnabled' },
 ];
 function chartSettingsPayload(isChecked) {
   const payload = {};

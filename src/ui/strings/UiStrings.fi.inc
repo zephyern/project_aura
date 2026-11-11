@@ -412,3 +412,7 @@
     "marras",
     "joulu",
     "Kaikki",
+    "VERTAA",
+    "VIIVAT",
+    "Vain kaksi yksikköä mahtuu, yksi kummallekin puolelle. Poista ensin yhden yksikön viivat.",
+    "Napauta VIIVAT valitaksesi vertailtavat.",

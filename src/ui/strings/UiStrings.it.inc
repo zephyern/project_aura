@@ -404,3 +404,7 @@
     "nov",
     "dic",
     "Tutto",
+    "CONFRONTA",
+    "LINEE",
+    "Ci stanno solo due unità, una per lato. Rimuovi prima le linee di un'unità.",
+    "Tocca LINEE per scegliere cosa confrontare.",

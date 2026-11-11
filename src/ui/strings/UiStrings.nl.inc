@@ -404,3 +404,7 @@
     "nov",
     "dec",
     "Alles",
+    "VERGELIJKEN",
+    "LIJNEN",
+    "Er passen maar twee eenheden, één per kant. Verwijder eerst de lijnen van één eenheid.",
+    "Tik op LIJNEN om te kiezen wat je vergelijkt.",
