@@ -442,15 +442,19 @@ void UiEventBinder::bindAvailableEvents(UiController &owner, int screen_id) {
     add_events(click_bindings, click_binding_count);
     add_events(value_bindings, value_binding_count);
 
-    // The Month buttons share one callback; the group index rides in user data.
+    // The long-range buttons share one callback; user data carries
+    // group index * kLongRangeCount + long range.
     for (size_t i = 0; i < UiController::kRangeGroupCount; ++i) {
-        lv_obj_t *btn = objects.*UiController::kRangeGroups[i].month_button;
-        if (!objectBelongsToScreen(btn, screen_root)) {
-            continue;
+        for (size_t r = 0; r < UiController::kLongRangeCount; ++r) {
+            lv_obj_t *btn = objects.*UiController::kRangeGroups[i].long_buttons[r].button;
+            if (!objectBelongsToScreen(btn, screen_root)) {
+                continue;
+            }
+            const uintptr_t index = i * UiController::kLongRangeCount + r;
+            lv_obj_remove_event_cb(btn, UiController::on_long_range_event_cb);
+            lv_obj_add_event_cb(btn, UiController::on_long_range_event_cb, LV_EVENT_VALUE_CHANGED,
+                                reinterpret_cast<void *>(index));
         }
-        lv_obj_remove_event_cb(btn, UiController::on_range_month_event_cb);
-        lv_obj_add_event_cb(btn, UiController::on_range_month_event_cb, LV_EVENT_VALUE_CHANGED,
-                            reinterpret_cast<void *>(static_cast<uintptr_t>(i)));
     }
 }
 
@@ -561,9 +565,11 @@ void UiEventBinder::applyToggleStylesForAvailableObjects(UiController &owner, in
         owner.apply_toggle_style(btn);
     }
     for (size_t i = 0; i < UiController::kRangeGroupCount; ++i) {
-        lv_obj_t *btn = objects.*UiController::kRangeGroups[i].month_button;
-        if (objectBelongsToScreen(btn, screen_root)) {
-            owner.apply_toggle_style(btn);
+        for (const UiController::RangeButton &button : UiController::kRangeGroups[i].long_buttons) {
+            lv_obj_t *btn = objects.*button.button;
+            if (objectBelongsToScreen(btn, screen_root)) {
+                owner.apply_toggle_style(btn);
+            }
         }
     }
 }
@@ -660,7 +666,10 @@ void UiEventBinder::applyCheckedStatesForAvailableObjects(UiController &owner, i
     set_checked(objects.btn_co_range_24h, owner.co_graph_range_ == UiController::TEMP_GRAPH_RANGE_24H);
     for (size_t i = 0; i < UiController::kRangeGroupCount; ++i) {
         const UiController::RangeGroup &group = UiController::kRangeGroups[i];
-        set_checked(objects.*group.month_button, owner.*group.range == UiController::TEMP_GRAPH_RANGE_MONTH);
+        set_checked(objects.*group.long_buttons[static_cast<size_t>(UiController::LongRange::Month)].button,
+                    owner.*group.range == UiController::TEMP_GRAPH_RANGE_MONTH);
+        set_checked(objects.*group.long_buttons[static_cast<size_t>(UiController::LongRange::Year)].button,
+                    owner.*group.range == UiController::TEMP_GRAPH_RANGE_YEAR);
     }
     set_checked(objects.btn_pressure_range_1h, owner.pressure_graph_range_ == UiController::TEMP_GRAPH_RANGE_1H);
     set_checked(objects.btn_pressure_range_3h, owner.pressure_graph_range_ == UiController::TEMP_GRAPH_RANGE_3H);

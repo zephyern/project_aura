@@ -3,8 +3,12 @@
 
 #include <unity.h>
 
+#include <stdlib.h>
+#include <time.h>
+
 #include <vector>
 
+#include "ui/ChartPeriod.h"
 #include "ui/LongChartSeries.h"
 
 using LongChartSeries::AddResult;
@@ -106,6 +110,46 @@ void test_other_gas_sensor_is_left_out() {
     TEST_ASSERT_TRUE(s[1].valid);
 }
 
+// The Year view puts each local day (23, 24 or 25 hours) on a 24-hour slot of
+// a grid anchored at local midnight on January 1st: every day of a year with
+// both daylight saving changes lands in its own slot.
+void test_year_days_each_get_their_own_day_slot() {
+    setenv("TZ", "EST5EDT,M3.2.0,M11.1.0", 1);
+    tzset();
+    uint32_t start = 0;
+    uint32_t end = 0;
+    TEST_ASSERT_TRUE(ChartPeriod::localYearBounds(2026, start, end));
+    constexpr uint32_t kDay = 24 * kHour;
+    const uint32_t slots = LongChartSeries::slotsCovering(start, end, kDay);
+    TEST_ASSERT_EQUAL_UINT32(365, slots);
+    Grid g;
+    g.first_start = start;
+    g.slot_seconds = kDay;
+    g.slot_count = slots;
+    Builder b;
+    TEST_ASSERT_TRUE(b.reset(g, false, 0));
+    uint32_t day_start = start;
+    for (uint32_t day = 0; day < slots; ++day) {
+        tm local{};
+        local.tm_year = 2026 - 1900;
+        local.tm_mon = 0;
+        local.tm_mday = static_cast<int>(day) + 2; // midnight after this day
+        local.tm_isdst = -1;
+        const uint32_t day_end = static_cast<uint32_t>(mktime(&local));
+        TEST_ASSERT_EQUAL(static_cast<int>(AddResult::Added),
+                          static_cast<int>(b.add(day_start, day_end, aggregate(day, 1, day, day))));
+        day_start = day_end;
+    }
+    TEST_ASSERT_EQUAL_UINT32(end, day_start);
+    std::vector<ChartPlot::Sample> s;
+    b.samples(s);
+    TEST_ASSERT_EQUAL_UINT32(slots, s.size());
+    for (uint32_t day = 0; day < slots; ++day) {
+        TEST_ASSERT_TRUE(s[day].valid);
+        TEST_ASSERT_FLOAT_WITHIN(1e-5f, static_cast<float>(day), s[day].mean);
+    }
+}
+
 void test_reset_rejects_empty_grids() {
     Builder b;
     TEST_ASSERT_FALSE(b.reset(grid(kHour, 0), false, 0));
@@ -121,6 +165,7 @@ int main(int, char **) {
     RUN_TEST(test_records_off_the_grid_are_outside);
     RUN_TEST(test_empty_and_bad_records);
     RUN_TEST(test_other_gas_sensor_is_left_out);
+    RUN_TEST(test_year_days_each_get_their_own_day_slot);
     RUN_TEST(test_reset_rejects_empty_grids);
     return UNITY_END();
 }
