@@ -69,6 +69,8 @@ public:
     bool firstDay(char *out, size_t len) const;
     // The same as a day key (YYYYMMDD).
     bool firstDayKey(uint32_t &day_key) const;
+    // The same as the UTC start of that first daily record.
+    bool firstRecordStart(uint32_t &start) const;
     // Readers for the device's long chart ranges (docs/CHARTS_HISTORY.md),
     // called from the main loop. Each record goes to `fn` in time order,
     // followed by the summary still in progress when it belongs to the range.
@@ -80,6 +82,11 @@ public:
     // Daily records starting in [start, end), read from the year files of
     // the local years the range touches.
     ChartRead dailyChart(uint32_t start, uint32_t end, ChartRecordFn fn, void *context) const;
+    // Week-ladder records of level `weeks` (1, 2, 4 ... 1024) starting in
+    // [start, end). The ladder writes only complete buckets, so the one-week
+    // records after the last of them follow, then the week in progress: the
+    // records always reach the present.
+    ChartRead weeklyChart(uint32_t weeks, uint32_t start, uint32_t end, ChartRecordFn fn, void *context) const;
     // Local day key and largest sample count of today's record so far.
     bool currentDay(uint32_t &day_key, uint32_t &sample_count) const;
     bool lastWriteOk() const;
@@ -114,8 +121,11 @@ public:
     OpStatus clearFuture(time_t now, OpResults &results);
 
 private:
-    enum class ChartLevel : uint8_t { Hourly, Daily };
-    ChartRead chartRead(ChartLevel level, uint32_t start, uint32_t end, ChartRecordFn fn, void *context) const;
+    enum class ChartLevel : uint8_t { Hourly, Daily, Weekly };
+    // `weeks`: the ladder level for Weekly, 0 otherwise.
+    ChartRead chartRead(ChartLevel level, uint32_t weeks, uint32_t start, uint32_t end, ChartRecordFn fn,
+                        void *context) const;
+    bool firstDailyRecord(QuarterHourRow::SpanRow &row) const;
 
     class Lock {
     public:

@@ -636,6 +636,8 @@ typedef struct _objects_t {
     lv_obj_t *label_btn_temp_range_month;
     lv_obj_t *btn_temp_range_year;
     lv_obj_t *label_btn_temp_range_year;
+    lv_obj_t *btn_temp_range_all;
+    lv_obj_t *label_btn_temp_range_all;
     lv_obj_t *co2_info;
     lv_obj_t *label_co2_text;
     lv_obj_t *co2_info_thresholds;
@@ -655,6 +657,8 @@ typedef struct _objects_t {
     lv_obj_t *label_btn_co2_range_month;
     lv_obj_t *btn_co2_range_year;
     lv_obj_t *label_btn_co2_range_year;
+    lv_obj_t *btn_co2_range_all;
+    lv_obj_t *label_btn_co2_range_all;
     lv_obj_t *voc_info;
     lv_obj_t *label_voc_text;
     lv_obj_t *voc_info_thresholds;
@@ -674,6 +678,8 @@ typedef struct _objects_t {
     lv_obj_t *label_btn_voc_range_month;
     lv_obj_t *btn_voc_range_year;
     lv_obj_t *label_btn_voc_range_year;
+    lv_obj_t *btn_voc_range_all;
+    lv_obj_t *label_btn_voc_range_all;
     lv_obj_t *optional_gas_info;
     lv_obj_t *label_optional_gas_text;
     lv_obj_t *optional_gas_info_thresholds;
@@ -693,6 +699,8 @@ typedef struct _objects_t {
     lv_obj_t *label_btn_optional_gas_range_month;
     lv_obj_t *btn_optional_gas_range_year;
     lv_obj_t *label_btn_optional_gas_range_year;
+    lv_obj_t *btn_optional_gas_range_all;
+    lv_obj_t *label_btn_optional_gas_range_all;
     lv_obj_t *nox_info;
     lv_obj_t *label_nox_text;
     lv_obj_t *nox_info_thresholds;
@@ -712,6 +720,8 @@ typedef struct _objects_t {
     lv_obj_t *label_btn_nox_range_month;
     lv_obj_t *btn_nox_range_year;
     lv_obj_t *label_btn_nox_range_year;
+    lv_obj_t *btn_nox_range_all;
+    lv_obj_t *label_btn_nox_range_all;
     lv_obj_t *hcho_info;
     lv_obj_t *label_hcho_text;
     lv_obj_t *hcho_info_thresholds;
@@ -731,6 +741,8 @@ typedef struct _objects_t {
     lv_obj_t *label_btn_hcho_range_month;
     lv_obj_t *btn_hcho_range_year;
     lv_obj_t *label_btn_hcho_range_year;
+    lv_obj_t *btn_hcho_range_all;
+    lv_obj_t *label_btn_hcho_range_all;
     lv_obj_t *label_aqi_text;
     lv_obj_t *aqi_info_thresholds;
     lv_obj_t *label_aqi_excellent;
@@ -757,6 +769,8 @@ typedef struct _objects_t {
     lv_obj_t *label_btn_rh_range_month;
     lv_obj_t *btn_rh_range_year;
     lv_obj_t *label_btn_rh_range_year;
+    lv_obj_t *btn_rh_range_all;
+    lv_obj_t *label_btn_rh_range_all;
     lv_obj_t *ah_info;
     lv_obj_t *label_ah_text;
     lv_obj_t *label_ah_excellent;
@@ -811,6 +825,8 @@ typedef struct _objects_t {
     lv_obj_t *label_btn_pressure_range_month;
     lv_obj_t *btn_pressure_range_year;
     lv_obj_t *label_btn_pressure_range_year;
+    lv_obj_t *btn_pressure_range_all;
+    lv_obj_t *label_btn_pressure_range_all;
     lv_obj_t *btn_24h_pressure_info;
     lv_obj_t *label_btn_24h_pressure_info;
     lv_obj_t *btn_3h_pressure_info;
@@ -855,6 +871,8 @@ typedef struct _objects_t {
     lv_obj_t *label_btn_pm1_10_range_month;
     lv_obj_t *btn_pm1_10_range_year;
     lv_obj_t *label_btn_pm1_10_range_year;
+    lv_obj_t *btn_pm1_10_range_all;
+    lv_obj_t *label_btn_pm1_10_range_all;
     lv_obj_t *btn_pm1_info;
     lv_obj_t *label_btn_pm1_info;
     lv_obj_t *btn_pm10_info;
@@ -898,6 +916,8 @@ typedef struct _objects_t {
     lv_obj_t *label_btn_pm25_4_range_month;
     lv_obj_t *btn_pm25_4_range_year;
     lv_obj_t *label_btn_pm25_4_range_year;
+    lv_obj_t *btn_pm25_4_range_all;
+    lv_obj_t *label_btn_pm25_4_range_all;
     lv_obj_t *btn_pm25_info;
     lv_obj_t *label_btn_pm25_info;
     lv_obj_t *btn_pm4_info;
@@ -916,6 +936,8 @@ typedef struct _objects_t {
     lv_obj_t *label_btn_pm05_range_month;
     lv_obj_t *btn_pm05_range_year;
     lv_obj_t *label_btn_pm05_range_year;
+    lv_obj_t *btn_pm05_range_all;
+    lv_obj_t *label_btn_pm05_range_all;
     lv_obj_t *pm05_info_thresholds;
     lv_obj_t *label_pm05_excellent;
     lv_obj_t *label_pm05_acceptable;
@@ -940,6 +962,8 @@ typedef struct _objects_t {
     lv_obj_t *label_btn_co_range_month;
     lv_obj_t *btn_co_range_year;
     lv_obj_t *label_btn_co_range_year;
+    lv_obj_t *btn_co_range_all;
+    lv_obj_t *label_btn_co_range_all;
     lv_obj_t *container_thresholds_dots;
     lv_obj_t *dot_excellent;
     lv_obj_t *dot_yellow;

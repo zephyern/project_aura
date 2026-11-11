@@ -1,8 +1,8 @@
 // SPDX-FileCopyrightText: 2026 Daniel Abramowitz
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-// The long chart ranges (docs/CHARTS_HISTORY.md): the Month and Year buttons
-// of every range group, the ‹ › period header and the charts read from the
+// The long chart ranges (docs/CHARTS_HISTORY.md): the Month, Year and Lifetime
+// buttons of every range group, the ‹ › period header and the charts read from the
 // long-term history files.
 
 #include "ui/UiController.h"
@@ -15,6 +15,7 @@
 #include "modules/ChartsHistory.h"
 #include "modules/HourlySummary.h"
 #include "modules/LongHistory.h"
+#include "ui/LifetimeChart.h"
 #include "ui/UiLocalization.h"
 #include "ui/UiText.h"
 #include "ui/ui.h"
@@ -31,6 +32,7 @@ constexpr uint32_t kMonthBandSlotSeconds = HourlySummary::kHourSeconds;
 constexpr uint32_t kYearSlotSeconds = 24U * HourlySummary::kHourSeconds;
 constexpr lv_coord_t kRangeButtonClickArea = 12;
 constexpr size_t kPeriodTitleCapacity = 48;
+constexpr int kTmYearBase = 1900;
 
 bool monthTitle(int32_t month_index, char *out, size_t len) {
     return ChartPeriod::formatTitle(UiText::LabelChartPeriodTitle(),
@@ -45,6 +47,14 @@ bool yearTitle(int32_t year, char *out, size_t len) {
 
 int32_t yearOfDayKey(uint32_t day_key) { return ChartPeriod::yearOfDayKey(day_key); }
 int32_t monthOfDayKey(uint32_t day_key) { return ChartPeriod::monthIndexOfDayKey(day_key); }
+// Lifetime has a single period, 0, once the clock is trusted.
+bool lifetimeAt(time_t epoch, int32_t &period) {
+    int32_t year = 0;
+    if (!ChartPeriod::localYearAt(epoch, year)) return false;
+    period = 0;
+    return true;
+}
+int32_t lifetimeOfDayKey(uint32_t) { return 0; }
 
 // One pass over the period's records feeds both grids.
 struct PeriodLoad {
@@ -74,25 +84,71 @@ struct UiController::LongRangeSpec {
     bool ChartsSettings::Values::*enabled;
     const char *(*button_text)();
     const char *name; // for the log
-    uint32_t line_slot_seconds;
-    uint32_t band_slot_seconds;
-    LongHistory::ChartRead (LongHistory::*read)(uint32_t start, uint32_t end, LongHistory::ChartRecordFn fn,
-                                                void *context) const;
-    bool (*bounds)(int32_t period, uint32_t &start, uint32_t &end);
+    // [start, end) and slot sizes of `period` (Lifetime: from `first` to `now`).
+    bool (*layout)(int32_t period, uint32_t first, time_t now, LongChartSeries::Layout &out);
+    LongHistory::ChartRead (*read)(const LongHistory &history, const LongChartSeries::Layout &layout,
+                                   LongHistory::ChartRecordFn fn, void *context);
     bool (*period_at)(time_t epoch, int32_t &period);
     int32_t (*period_of_day)(uint32_t day_key);
+    // Title between ‹ ›; nullptr for a range without periods (no header).
     bool (*title)(int32_t period, char *out, size_t len);
     ChartAxis::Kind ticks;
 };
 
+namespace {
+
+bool monthLayout(int32_t month_index, uint32_t, time_t, LongChartSeries::Layout &out) {
+    out.line_slot_seconds = kMonthLineSlotSeconds;
+    out.band_slot_seconds = kMonthBandSlotSeconds;
+    return ChartPeriod::localMonthBounds(month_index, out.start, out.end);
+}
+
+bool yearLayout(int32_t year, uint32_t, time_t, LongChartSeries::Layout &out) {
+    out.line_slot_seconds = kYearSlotSeconds;
+    out.band_slot_seconds = kYearSlotSeconds;
+    return ChartPeriod::localYearBounds(year, out.start, out.end);
+}
+
+bool lifetimeLayout(int32_t, uint32_t first, time_t now, LongChartSeries::Layout &out) {
+    LifetimeChart::Levels levels;
+    if (now < 0 || !LifetimeChart::chooseLevels(first, static_cast<uint32_t>(now), levels)) return false;
+    out.start = levels.start;
+    out.end = levels.end;
+    out.line_slot_seconds = levels.line_weeks * WeeklySummary::kWeekSeconds;
+    out.band_slot_seconds = levels.band_weeks * WeeklySummary::kWeekSeconds;
+    out.band_weeks = levels.band_weeks;
+    return true;
+}
+
+LongHistory::ChartRead readHourly(const LongHistory &history, const LongChartSeries::Layout &l,
+                              LongHistory::ChartRecordFn fn, void *ctx) {
+    return history.hourlyChart(l.start, l.end, fn, ctx);
+}
+
+LongHistory::ChartRead readDaily(const LongHistory &history, const LongChartSeries::Layout &l,
+                              LongHistory::ChartRecordFn fn, void *ctx) {
+    return history.dailyChart(l.start, l.end, fn, ctx);
+}
+
+// The band level's records feed both grids: two of them combine exactly into
+// one line slot, so the coarser ladder file is not needed.
+LongHistory::ChartRead readWeekly(const LongHistory &history, const LongChartSeries::Layout &l,
+                              LongHistory::ChartRecordFn fn, void *ctx) {
+    return history.weeklyChart(l.band_weeks, l.start, l.end, fn, ctx);
+}
+
+} // namespace
+
 // Indexed by LongRange.
 const UiController::LongRangeSpec UiController::kLongRangeSpecs[kLongRangeCount] = {
     {TEMP_GRAPH_RANGE_MONTH, &ChartsSettings::Values::month_enabled, &UiText::LabelChartRangeMonth, "month",
-     kMonthLineSlotSeconds, kMonthBandSlotSeconds, &LongHistory::hourlyChart, &ChartPeriod::localMonthBounds,
-     &ChartPeriod::localMonthIndexAt, &monthOfDayKey, &monthTitle, ChartAxis::Kind::Days},
+     &monthLayout, &readHourly, &ChartPeriod::localMonthIndexAt, &monthOfDayKey, &monthTitle,
+     ChartAxis::Kind::Days},
     {TEMP_GRAPH_RANGE_YEAR, &ChartsSettings::Values::year_enabled, &UiText::LabelChartRangeYear, "year",
-     kYearSlotSeconds, kYearSlotSeconds, &LongHistory::dailyChart, &ChartPeriod::localYearBounds,
-     &ChartPeriod::localYearAt, &yearOfDayKey, &yearTitle, ChartAxis::Kind::Months},
+     &yearLayout, &readDaily, &ChartPeriod::localYearAt, &yearOfDayKey, &yearTitle, ChartAxis::Kind::Months},
+    {TEMP_GRAPH_RANGE_LIFETIME, &ChartsSettings::Values::lifetime_enabled, &UiText::LabelChartRangeLifetime,
+     "lifetime", &lifetimeLayout, &readWeekly, &lifetimeAt, &lifetimeOfDayKey, nullptr,
+     ChartAxis::Kind::YearMonths},
 };
 
 bool UiController::long_range_of(TempGraphRange graph_range, LongRange &range) {
@@ -107,7 +163,8 @@ bool UiController::long_range_of(TempGraphRange graph_range, LongRange &range) {
 
 const UiController::RangeGroup UiController::kRangeGroups[] = {
     {{{&objects_t::btn_temp_range_month, &objects_t::label_btn_temp_range_month},
-      {&objects_t::btn_temp_range_year, &objects_t::label_btn_temp_range_year}},
+      {&objects_t::btn_temp_range_year, &objects_t::label_btn_temp_range_year},
+      {&objects_t::btn_temp_range_all, &objects_t::label_btn_temp_range_all}},
      &UiController::temp_graph_range_,
      &UiController::temp_graph_mode_, &UiController::set_temperature_info_mode,
      [](InfoSensor s) { return s == INFO_TEMP; },
@@ -116,13 +173,15 @@ const UiController::RangeGroup UiController::kRangeGroups[] = {
          ui.restore_sensor_info_selection();
      }},
     {{{&objects_t::btn_rh_range_month, &objects_t::label_btn_rh_range_month},
-      {&objects_t::btn_rh_range_year, &objects_t::label_btn_rh_range_year}},
+      {&objects_t::btn_rh_range_year, &objects_t::label_btn_rh_range_year},
+      {&objects_t::btn_rh_range_all, &objects_t::label_btn_rh_range_all}},
      &UiController::rh_graph_range_,
      &UiController::rh_graph_mode_, &UiController::set_rh_info_mode,
      [](InfoSensor s) { return s == INFO_RH; },
      [](UiController &ui) { ui.select_humidity_info(INFO_RH); }},
     {{{&objects_t::btn_voc_range_month, &objects_t::label_btn_voc_range_month},
-      {&objects_t::btn_voc_range_year, &objects_t::label_btn_voc_range_year}},
+      {&objects_t::btn_voc_range_year, &objects_t::label_btn_voc_range_year},
+      {&objects_t::btn_voc_range_all, &objects_t::label_btn_voc_range_all}},
      &UiController::voc_graph_range_,
      &UiController::voc_graph_mode_, &UiController::set_voc_info_mode,
      [](InfoSensor s) { return s == INFO_VOC; },
@@ -131,7 +190,8 @@ const UiController::RangeGroup UiController::kRangeGroups[] = {
          ui.restore_sensor_info_selection();
      }},
     {{{&objects_t::btn_nox_range_month, &objects_t::label_btn_nox_range_month},
-      {&objects_t::btn_nox_range_year, &objects_t::label_btn_nox_range_year}},
+      {&objects_t::btn_nox_range_year, &objects_t::label_btn_nox_range_year},
+      {&objects_t::btn_nox_range_all, &objects_t::label_btn_nox_range_all}},
      &UiController::nox_graph_range_,
      &UiController::nox_graph_mode_, &UiController::set_nox_info_mode,
      [](InfoSensor s) { return s == INFO_NOX; },
@@ -140,13 +200,15 @@ const UiController::RangeGroup UiController::kRangeGroups[] = {
          ui.restore_sensor_info_selection();
      }},
     {{{&objects_t::btn_optional_gas_range_month, &objects_t::label_btn_optional_gas_range_month},
-      {&objects_t::btn_optional_gas_range_year, &objects_t::label_btn_optional_gas_range_year}},
+      {&objects_t::btn_optional_gas_range_year, &objects_t::label_btn_optional_gas_range_year},
+      {&objects_t::btn_optional_gas_range_all, &objects_t::label_btn_optional_gas_range_all}},
      &UiController::optional_gas_graph_range_, &UiController::optional_gas_graph_mode_,
      &UiController::set_optional_gas_info_mode,
      [](InfoSensor s) { return s == INFO_OPTIONAL_GAS; },
      [](UiController &ui) { ui.select_optional_gas_info(); }},
     {{{&objects_t::btn_hcho_range_month, &objects_t::label_btn_hcho_range_month},
-      {&objects_t::btn_hcho_range_year, &objects_t::label_btn_hcho_range_year}},
+      {&objects_t::btn_hcho_range_year, &objects_t::label_btn_hcho_range_year},
+      {&objects_t::btn_hcho_range_all, &objects_t::label_btn_hcho_range_all}},
      &UiController::hcho_graph_range_,
      &UiController::hcho_graph_mode_, &UiController::set_hcho_info_mode,
      [](InfoSensor s) { return s == INFO_HCHO; },
@@ -155,7 +217,8 @@ const UiController::RangeGroup UiController::kRangeGroups[] = {
          ui.restore_sensor_info_selection();
      }},
     {{{&objects_t::btn_co2_range_month, &objects_t::label_btn_co2_range_month},
-      {&objects_t::btn_co2_range_year, &objects_t::label_btn_co2_range_year}},
+      {&objects_t::btn_co2_range_year, &objects_t::label_btn_co2_range_year},
+      {&objects_t::btn_co2_range_all, &objects_t::label_btn_co2_range_all}},
      &UiController::co2_graph_range_,
      &UiController::co2_graph_mode_, &UiController::set_co2_info_mode,
      [](InfoSensor s) { return s == INFO_CO2; },
@@ -164,29 +227,34 @@ const UiController::RangeGroup UiController::kRangeGroups[] = {
          ui.restore_sensor_info_selection();
      }},
     {{{&objects_t::btn_pm05_range_month, &objects_t::label_btn_pm05_range_month},
-      {&objects_t::btn_pm05_range_year, &objects_t::label_btn_pm05_range_year}},
+      {&objects_t::btn_pm05_range_year, &objects_t::label_btn_pm05_range_year},
+      {&objects_t::btn_pm05_range_all, &objects_t::label_btn_pm05_range_all}},
      &UiController::pm05_graph_range_,
      &UiController::pm05_graph_mode_, &UiController::set_pm05_info_mode,
      [](InfoSensor s) { return s == INFO_PM05; },
      [](UiController &ui) { ui.select_pm_info(INFO_PM05); }},
     {{{&objects_t::btn_pm25_4_range_month, &objects_t::label_btn_pm25_4_range_month},
-      {&objects_t::btn_pm25_4_range_year, &objects_t::label_btn_pm25_4_range_year}},
+      {&objects_t::btn_pm25_4_range_year, &objects_t::label_btn_pm25_4_range_year},
+      {&objects_t::btn_pm25_4_range_all, &objects_t::label_btn_pm25_4_range_all}},
      &UiController::pm25_4_graph_range_, &UiController::pm25_4_graph_mode_, &UiController::set_pm25_4_info_mode,
      [](InfoSensor s) { return s == INFO_PM25 || s == INFO_PM4; },
      [](UiController &ui) { ui.select_pm_info(INFO_PM25); }},
     {{{&objects_t::btn_pm1_10_range_month, &objects_t::label_btn_pm1_10_range_month},
-      {&objects_t::btn_pm1_10_range_year, &objects_t::label_btn_pm1_10_range_year}},
+      {&objects_t::btn_pm1_10_range_year, &objects_t::label_btn_pm1_10_range_year},
+      {&objects_t::btn_pm1_10_range_all, &objects_t::label_btn_pm1_10_range_all}},
      &UiController::pm1_10_graph_range_, &UiController::pm1_10_graph_mode_, &UiController::set_pm1_10_info_mode,
      [](InfoSensor s) { return s == INFO_PM1 || s == INFO_PM10; },
      [](UiController &ui) { ui.select_pm_info(INFO_PM10); }},
     {{{&objects_t::btn_co_range_month, &objects_t::label_btn_co_range_month},
-      {&objects_t::btn_co_range_year, &objects_t::label_btn_co_range_year}},
+      {&objects_t::btn_co_range_year, &objects_t::label_btn_co_range_year},
+      {&objects_t::btn_co_range_all, &objects_t::label_btn_co_range_all}},
      &UiController::co_graph_range_,
      &UiController::co_graph_mode_, &UiController::set_co_info_mode,
      [](InfoSensor s) { return s == INFO_CO; },
      [](UiController &ui) { ui.select_pm_info(INFO_CO); }},
     {{{&objects_t::btn_pressure_range_month, &objects_t::label_btn_pressure_range_month},
-      {&objects_t::btn_pressure_range_year, &objects_t::label_btn_pressure_range_year}},
+      {&objects_t::btn_pressure_range_year, &objects_t::label_btn_pressure_range_year},
+      {&objects_t::btn_pressure_range_all, &objects_t::label_btn_pressure_range_all}},
      &UiController::pressure_graph_range_, &UiController::pressure_graph_mode_,
      &UiController::set_pressure_info_mode,
      [](InfoSensor s) { return s == INFO_PRESSURE_3H || s == INFO_PRESSURE_24H; },
@@ -248,6 +316,14 @@ void UiController::open_period_navigator(LongRange range) {
     nav.valid = spec.period_at(time(nullptr), now_period);
     invalidate_active_graph_refresh_cache();
     if (!nav.valid) return;
+    if (!spec.title) {
+        // No periods: the chart runs from the oldest record (or from now
+        // when nothing is recorded yet) to the present.
+        uint32_t first = 0;
+        nav.first = longHistory.firstRecordStart(first) ? first : static_cast<uint32_t>(time(nullptr));
+        nav.nav = ChartPeriod::make(now_period, now_period, now_period);
+        return;
+    }
     uint32_t first_day = 0;
     const int32_t oldest = longHistory.firstDayKey(first_day) ? spec.period_of_day(first_day) : now_period;
     nav.nav = ChartPeriod::make(oldest, now_period, now_period);
@@ -262,29 +338,30 @@ void UiController::step_chart_period(ChartPeriod::Step step) {
     update_sensor_info_ui();
 }
 
-bool UiController::period_bounds(LongRange range, uint32_t &start, uint32_t &end) const {
+bool UiController::period_layout(LongRange range, LongChartSeries::Layout &layout) const {
     const PeriodNav &nav = period_navs_[static_cast<size_t>(range)];
-    return nav.valid && kLongRangeSpecs[static_cast<size_t>(range)].bounds(nav.nav.current, start, end);
+    layout = LongChartSeries::Layout{};
+    return nav.valid &&
+           kLongRangeSpecs[static_cast<size_t>(range)].layout(nav.nav.current, nav.first, time(nullptr), layout);
 }
 
 uint16_t UiController::period_line_points(LongRange range) const {
-    uint32_t start = 0;
-    uint32_t end = 0;
-    if (!period_bounds(range, start, end)) return 0;
-    return static_cast<uint16_t>(
-        LongChartSeries::slotsCovering(start, end, kLongRangeSpecs[static_cast<size_t>(range)].line_slot_seconds));
+    LongChartSeries::Layout layout;
+    if (!period_layout(range, layout)) return 0;
+    return static_cast<uint16_t>(LongChartSeries::slotsCovering(layout.start, layout.end, layout.line_slot_seconds));
 }
 
 UiController::PeriodChartStatus UiController::load_period_chart(LongRange range, int metric_id) {
     const LongRangeSpec &spec = kLongRangeSpecs[static_cast<size_t>(range)];
     const PeriodNav &nav = period_navs_[static_cast<size_t>(range)];
-    uint32_t start = 0;
-    uint32_t end = 0;
     if (!nav.valid) return PeriodChartStatus::ClockNotSet;
-    if (!period_bounds(range, start, end)) {
-        LOGE(kTag, "no local bounds for %s %ld", spec.name, static_cast<long>(nav.nav.current));
+    LongChartSeries::Layout layout;
+    if (!period_layout(range, layout)) {
+        LOGE(kTag, "no time span for %s %ld", spec.name, static_cast<long>(nav.nav.current));
         return PeriodChartStatus::Unreadable;
     }
+    const uint32_t start = layout.start;
+    const uint32_t end = layout.end;
     const bool gas = metric_id == ChartsHistory::METRIC_OPTIONAL_GAS;
     const uint8_t source = gas ? chartsHistory.optionalGasType() : 0;
     // The period in progress is read again each hour; a past one never changes.
@@ -298,10 +375,10 @@ UiController::PeriodChartStatus UiController::load_period_chart(LongRange range,
         return PeriodChartStatus::Ready;
     }
 
-    const LongChartSeries::Grid line_grid{start, spec.line_slot_seconds,
-                                          LongChartSeries::slotsCovering(start, end, spec.line_slot_seconds)};
-    const LongChartSeries::Grid band_grid{start, spec.band_slot_seconds,
-                                          LongChartSeries::slotsCovering(start, end, spec.band_slot_seconds)};
+    const LongChartSeries::Grid line_grid{start, layout.line_slot_seconds,
+                                          LongChartSeries::slotsCovering(start, end, layout.line_slot_seconds)};
+    const LongChartSeries::Grid band_grid{start, layout.band_slot_seconds,
+                                          LongChartSeries::slotsCovering(start, end, layout.band_slot_seconds)};
     LongChartSeries::Builder line;
     LongChartSeries::Builder band;
     if (!line.reset(line_grid, gas, source) || !band.reset(band_grid, gas, source)) {
@@ -309,7 +386,7 @@ UiController::PeriodChartStatus UiController::load_period_chart(LongRange range,
         return PeriodChartStatus::Unreadable;
     }
     PeriodLoad load{&line, &band, metric_id, 0};
-    switch ((longHistory.*spec.read)(start, end, &addPeriodRecord, &load)) {
+    switch (spec.read(longHistory, layout, &addPeriodRecord, &load)) {
         case LongHistory::ChartRead::Read:
             break;
         case LongHistory::ChartRead::Off:
@@ -457,9 +534,10 @@ void UiController::sync_chart_period_header() {
     const bool pressure_overlay = (info_sensor == INFO_PRESSURE_3H || info_sensor == INFO_PRESSURE_24H) &&
                                   pressure_altitude_overlay_open_;
     LongRange range = LongRange::Month;
-    const bool show = active_long_range(range) && !pressure_overlay;
+    const bool long_active = active_long_range(range);
+    const bool show = long_active && kLongRangeSpecs[static_cast<size_t>(range)].title && !pressure_overlay;
     if (!show) {
-        hide_chart_message();
+        if (!long_active || pressure_overlay) hide_chart_message();
         set_visible(objects.btn_chart_period_prev, false);
         set_visible(objects.btn_chart_period_next, false);
         if (chart_period_title_ && lv_obj_is_valid(chart_period_title_)) {
@@ -525,8 +603,18 @@ bool UiController::format_period_tick(int64_t epoch, char *buf, size_t len) cons
     const time_t t = static_cast<time_t>(epoch);
     struct tm local {};
     if (!localtime_r(&t, &local)) return false;
-    const int written = (chart_axis_.kind == ChartAxis::Kind::Months)
-        ? snprintf(buf, len, "%s", UiText::MonthShortName(local.tm_mon + 1))
-        : snprintf(buf, len, "%d", local.tm_mday);
+    int written = 0;
+    switch (chart_axis_.kind) {
+        case ChartAxis::Kind::Months:
+            written = snprintf(buf, len, "%s", UiText::MonthShortName(local.tm_mon + 1));
+            break;
+        case ChartAxis::Kind::YearMonths:
+            written = snprintf(buf, len, "%04d-%02d", local.tm_year + kTmYearBase, local.tm_mon + 1);
+            break;
+        case ChartAxis::Kind::Days:
+        case ChartAxis::Kind::Recent:
+            written = snprintf(buf, len, "%d", local.tm_mday);
+            break;
+    }
     return written > 0 && static_cast<size_t>(written) < len;
 }
