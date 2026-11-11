@@ -24,7 +24,7 @@ void SummaryWriter::setEnabled(bool enabled) {
     prepared_ = false;
     open_ = false;
     file_path_[0] = '\0';
-    closed_start_ = 0;
+    floor_ = 0;
     status_ = Status{};
     status_.state = enabled ? State::NoCard : State::Off;
 }
@@ -116,6 +116,7 @@ bool SummaryWriter::prepare() {
     status_.state = State::Recording;
     status_.failure_kind = DailyStorageFailureKind::None;
     open_ = false;
+    floor_ = resume;
     LongHistoryFiles::ScanStats scan;
     const LongHistoryFiles::ScanResult r =
         LongHistoryFiles::scanQuarterRows(storage_, resume, newest + kQuarter, &rebuildRow, this, scan);
@@ -159,32 +160,61 @@ void SummaryWriter::onRow(const QuarterHourRow::Row &row) {
 
 void SummaryWriter::add(const QuarterHourRow::Row &row, bool rebuilding) {
     SummaryLevel::Bucket b;
-    if (!level_.bucketFor(row.start_epoch, b)) {
+    const uint32_t quarter = row.start_epoch;
+    if (!level_.bucketFor(quarter, b)) {
         LOGW(kTag, "%s summary: no bucket for quarter %u", level_.name(),
-             static_cast<unsigned>(row.start_epoch));
+             static_cast<unsigned>(quarter));
         ++status_.refused;
         return;
     }
-    if ((open_ && b.start < bucket_.start) || (!open_ && closed_start_ && b.start <= closed_start_)) {
-        LOGW(kTag, "%s summary: quarter %u is for a closed bucket; not added", level_.name(),
-             static_cast<unsigned>(row.start_epoch));
-        ++status_.refused;
-        return;
+    if (open_) {
+        if (quarter < bucket_.start) {
+            LOGW(kTag, "%s summary: quarter %u is for a closed bucket; not added", level_.name(),
+                 static_cast<unsigned>(quarter));
+            ++status_.refused;
+            return;
+        }
+        if (quarter < bucket_.end) {
+            if (b.start != bucket_.start || b.end != bucket_.end) {
+                // The grouping changed inside the open bucket (a time-zone
+                // change for local days): the bucket ends where the new
+                // grouping's bucket ends, and keeps its start and file.
+                if (!builder_.setEnd(b.end)) {
+                    LOGW(kTag, "%s summary: cannot end bucket at %u; quarter %u not added",
+                         level_.name(), static_cast<unsigned>(b.end), static_cast<unsigned>(quarter));
+                    ++status_.refused;
+                    return;
+                }
+                LOGI(kTag, "%s summary: bucket from %u now ends at %u", level_.name(),
+                     static_cast<unsigned>(bucket_.start), static_cast<unsigned>(b.end));
+                bucket_.end = b.end;
+            }
+        } else {
+            close(rebuilding);
+        }
     }
-    if (open_ && b.start > bucket_.start) close(rebuilding);
     if (!prepared_) return;
     if (!open_) {
+        if (b.end <= floor_) {
+            LOGW(kTag, "%s summary: quarter %u is for a closed bucket; not added", level_.name(),
+                 static_cast<unsigned>(quarter));
+            ++status_.refused;
+            return;
+        }
+        // After a grouping change the first bucket starts where the last
+        // written one ended, so records never overlap.
+        if (b.start < floor_) b.start = floor_;
         bucket_ = b;
         builder_.begin(b.start, b.end);
         open_ = true;
     }
     builder_.add(row);
-    if (row.start_epoch + kQuarter >= bucket_.end) close(rebuilding);
+    if (quarter + kQuarter >= bucket_.end) close(rebuilding);
 }
 
 void SummaryWriter::close(bool rebuilding) {
     open_ = false;
-    closed_start_ = bucket_.start;
+    floor_ = bucket_.end;
     const HistoryBucket::Record &record = builder_.record();
     if (record.empty()) return;
     if (strcmp(file_path_, bucket_.path) != 0) {
