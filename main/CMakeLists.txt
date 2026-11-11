@@ -17,7 +17,8 @@ idf_component_register(WHOLE_ARCHIVE SRCS ${aura_sources}
     INCLUDE_DIRS "../src" "../include" "${CMAKE_BINARY_DIR}/generated"
     REQUIRES arduino-esp32 esp32_display_panel lvgl arduinojson aura_i2c
         driver esp_driver_i2c esp_driver_gpio esp_driver_ledc esp_lcd esp_http_server esp_timer
-        esp_wifi esp_event lwip app_update nvs_flash mqtt sdmmc fatfs network_provisioning ulp)
+        esp_wifi esp_event lwip app_update nvs_flash mqtt sdmmc fatfs network_provisioning ulp
+        esp_http_client mbedtls)
 target_link_libraries(${COMPONENT_LIB} INTERFACE "-u aura_ota_image_identity")
 # Keep the application on its established C++17 language contract while IDF
 # builds its own components with the SDK's newer default.
