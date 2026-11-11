@@ -41,6 +41,17 @@ public:
         uint16_t first_second[kMetricCount] = {};
         uint16_t last_second[kMetricCount] = {};
     };
+    // A completed, trusted summary as it enters the ring, together with the
+    // exact statistics the persisted Entry does not keep: the double sum per
+    // metric and the second (0..299) at which the low and the high were first
+    // reached. RAM only; the Entry layout and schema are unchanged.
+    struct CompletedInterval {
+        Entry entry;
+        double sums[kMetricCount] = {};
+        uint16_t min_second[kMetricCount] = {};
+        uint16_t max_second[kMetricCount] = {};
+    };
+    using IntervalListener = void (*)(const CompletedInterval &interval, void *context);
     static constexpr uint16_t metricBit(Metric metric) {
         return static_cast<uint16_t>(1U << static_cast<uint8_t>(metric));
     }
@@ -58,6 +69,12 @@ public:
     bool metricValueFromOldest(uint16_t offset, Metric metric, float &value, bool &valid) const;
     using NowEpochFn = time_t (*)();
     static void setNowEpochFn(NowEpochFn fn);
+    // One listener receives every completed interval that is appended with a
+    // trusted start time and at least one valid metric. Gaps, untrusted
+    // intervals and intervals refused by the clock checks are never published.
+    // Returns false, leaving the current listener, if a different function or
+    // context is already registered; pass nullptr to unregister.
+    bool setIntervalListener(IntervalListener listener, void *context);
 
 private:
     struct LegacyState {
@@ -96,6 +113,10 @@ private:
     uint32_t revision_ = 0;
     Entry active_{};
     double sums_[kMetricCount] = {};
+    uint16_t min_second_[kMetricCount] = {};
+    uint16_t max_second_[kMetricCount] = {};
+    IntervalListener interval_listener_ = nullptr;
+    void *interval_listener_context_ = nullptr;
     uint32_t active_bucket_ = 0;
     bool active_set_ = false, active_trusted_ = false, restored_ = false;
     uint32_t last_epoch_ = 0, last_tick_ms_ = 0, last_retry_ms_ = 0;

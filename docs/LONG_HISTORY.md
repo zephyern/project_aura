@@ -24,3 +24,23 @@ and no rounding accumulates across levels.
 - A combined count that would overflow 32 bits returns `CountOverflow`, target unchanged.
 
 Host tests: `test/test_history_aggregate`.
+
+## Source: completed five-minute intervals
+
+ChartsHistory publishes each completed interval to one registered listener
+(`ChartsHistory::setIntervalListener`) at the moment it is appended to the ring. The
+`CompletedInterval` carries the ring `Entry` plus RAM-only statistics the persisted entry
+rounds away: the exact `double` sum per metric and the second (0-299) at which the low
+and the high were first reached. The `Entry` layout and the flash schema (v3) are
+unchanged.
+
+Only intervals with a trusted UTC start and at least one valid metric are published.
+Gaps, intervals started without trusted time, and intervals discarded or refused by the
+existing clock checks (backward correction, not later than the newest record) are never
+published, so a listener can never receive the same start twice from one session.
+One listener is registered at a time: registering a different function or context while
+one is set is refused (`false`); registering the same pair again is harmless; unregister
+with `nullptr`.
+
+Host tests: `test/test_charts_history` (publication, exact sums and low/high seconds,
+gaps, untrusted time, backward clock, single listener).

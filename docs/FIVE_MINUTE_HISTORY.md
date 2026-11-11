@@ -8,6 +8,8 @@ Hub consumption, and cloud ingestion are separate integration steps.
 SensorManager marks new acquisitions, including successive equal readings. ChartsHistory
 accumulates each metric once per new acquisition in UTC intervals [start, start + 300).
 Its completed record is the source for the local web chart and the bounded history export.
+Each completed trusted summary is also handed to one optional listener with its exact sums
+and low/high seconds; see [LONG_HISTORY.md](LONG_HISTORY.md).
 Current values, their display filtering, and live alert evaluation keep their existing cadence.
 
 CO2 and pressure enter history before their firmware display-smoothing filters, with the
