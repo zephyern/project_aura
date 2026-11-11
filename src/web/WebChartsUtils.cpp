@@ -37,6 +37,17 @@ constexpr ChartMetricSpec kChartPmMetrics[] = {
     {"pm10", "ug/m3", ChartsHistory::METRIC_PM10},
 };
 
+struct ChartMetricGroup {
+    const ChartMetricSpec *metrics;
+    size_t count;
+};
+
+constexpr ChartMetricGroup kChartMetricGroups[] = {
+    {kChartCoreMetrics, sizeof(kChartCoreMetrics) / sizeof(kChartCoreMetrics[0])},
+    {kChartGasMetrics, sizeof(kChartGasMetrics) / sizeof(kChartGasMetrics[0])},
+    {kChartPmMetrics, sizeof(kChartPmMetrics) / sizeof(kChartPmMetrics[0])},
+};
+
 String normalize_token(const String &value) {
     String out;
     const char *begin = value.c_str();
@@ -77,6 +88,23 @@ uint16_t chartWindowPoints(const String &window_arg, const char *&window_name) {
     }
     window_name = "3h";
     return Config::CHART_HISTORY_3H_STEPS;
+}
+
+size_t chartMetricCount() {
+    size_t count = 0;
+    for (const ChartMetricGroup &group : kChartMetricGroups) count += group.count;
+    return count;
+}
+
+bool chartMetricAt(size_t index, const ChartMetricSpec *&spec) {
+    for (const ChartMetricGroup &group : kChartMetricGroups) {
+        if (index < group.count) {
+            spec = &group.metrics[index];
+            return true;
+        }
+        index -= group.count;
+    }
+    return false;
 }
 
 void chartGroupMetrics(const String &group_arg,
