@@ -345,4 +345,10 @@ bool dailyFilePath(uint32_t local_year, char (&out)[kPathCapacity]) {
     return true;
 }
 
+bool weeklyFilePath(uint32_t weeks, char (&out)[kPathCapacity]) {
+    if (weeks == 0 || weeks > 1024 || (weeks & (weeks - 1)) != 0) return false;
+    snprintf(out, sizeof(out), "%s/w%u.csv", kWeeklyRoot, static_cast<unsigned>(weeks));
+    return true;
+}
+
 } // namespace LongHistoryFiles

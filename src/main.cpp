@@ -53,6 +53,7 @@
 #include "modules/DailySummary.h"
 #include "modules/HourlySummary.h"
 #include "modules/SummaryWriter.h"
+#include "modules/WeeklySummary.h"
 #include "modules/TimeManager.h"
 #include "modules/FanControl.h"
 #include "web/WebRuntime.h"
@@ -84,6 +85,9 @@ const HourlySummary::Level hourlyLevel;
 SummaryWriter hourlySummary(sdCardManager, hourlyLevel);
 const DailySummary::Level dailyLevel;
 SummaryWriter dailySummary(sdCardManager, dailyLevel);
+const WeeklySummary::Level weeklyLevel;
+SummaryWriter weeklySummary(sdCardManager, weeklyLevel);
+uint32_t weeklyRecordsSeen = UINT32_MAX; // forces one ladder update after preparation
 DailyExtremaHistory dailyExtremaHistory;
 AuraNetworkManager networkManager;
 MqttManager mqttManager;
@@ -742,10 +746,13 @@ void setup()
         LOGE("History", "hourly summary could not listen to 15-minute rows; long-term history disabled");
     } else if (!quarterHourLogger.addRowListener(&SummaryWriter::rowThunk, &dailySummary)) {
         LOGE("History", "daily summary could not listen to 15-minute rows; long-term history disabled");
+    } else if (!quarterHourLogger.addRowListener(&SummaryWriter::rowThunk, &weeklySummary)) {
+        LOGE("History", "weekly summary could not listen to 15-minute rows; long-term history disabled");
     } else {
         quarterHourLogger.setEnabled(storage.config().history_log_enabled);
         hourlySummary.setEnabled(storage.config().history_log_enabled);
         dailySummary.setEnabled(storage.config().history_log_enabled);
+        weeklySummary.setEnabled(storage.config().history_log_enabled);
     }
     const AppInit::LvglInitResult lvgl_result = AppInit::initLvglAndUi(init_ctx, board);
     lvgl_ready = lvgl_result.ui_ready;
@@ -1045,6 +1052,19 @@ void loop()
         quarterHourLogger.poll(history_now, system_time_trusted);
         hourlySummary.poll(history_now, system_time_trusted, quarterHourLogger.prepared());
         dailySummary.poll(history_now, system_time_trusted, quarterHourLogger.prepared());
+        weeklySummary.poll(history_now, system_time_trusted, quarterHourLogger.prepared());
+        const SummaryWriter::Status weekly = weeklySummary.status();
+        if (weekly.state == SummaryWriter::State::Recording) {
+            const uint32_t seen = weekly.records_written + weekly.records_rebuilt;
+            if (seen != weeklyRecordsSeen) {
+                weeklyRecordsSeen = seen;
+                WeeklySummary::LadderStats ladder;
+                if (WeeklySummary::updateLadder(sdCardManager, ladder) != WeeklySummary::LadderResult::Updated) {
+                    LOGE("History", "weekly ladder update failed (%u)",
+                         static_cast<unsigned>(sdCardManager.lastFailureKind()));
+                }
+            }
+        }
     }
     chartsRuntimeState.update(chartsHistory);
     webRuntimeState.update(currentData, sensorManager.isWarmupActive(), fanControl);
