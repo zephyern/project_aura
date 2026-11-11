@@ -14,6 +14,8 @@ namespace LongHistoryFiles {
 
 // /aura/history/15min/YYYY/MM/YYYY-MM-DD.csv, named by UTC date.
 constexpr const char *kQuarterRoot = "/aura/history/15min";
+// /aura/history/hourly/YYYY-MM.csv, UTC hours, named by UTC year and month.
+constexpr const char *kHourlyRoot = "/aura/history/hourly";
 constexpr size_t kPathCapacity = 48;
 // A row is about 1 KB with every metric present; the header is a little longer.
 constexpr size_t kMaxLineBytes = 2048;
@@ -58,5 +60,24 @@ using RowFn = bool (*)(const QuarterHourRow::Row &row, size_t line_offset, void 
 // last line) is skipped and logged with its line number and reason.
 ReadResult readQuarterFile(const DailyHistoryStorage &storage, const char *path, RowFn fn,
                            void *context, ReadStats &stats);
+
+// The same reader for summary files (span layout: hourly, daily, weekly).
+using SpanFn = bool (*)(const QuarterHourRow::SpanRow &row, size_t line_offset, void *context);
+ReadResult readSpanFile(const DailyHistoryStorage &storage, const char *path, SpanFn fn,
+                        void *context, ReadStats &stats);
+
+enum class ScanResult : uint8_t { Done, Stopped, Failed };
+struct ScanStats {
+    uint32_t files_read = 0;
+    uint32_t files_unsupported = 0; // header not ours: skipped (logged)
+    uint32_t rows_skipped = 0;      // bad lines skipped (logged)
+};
+// Every 15-minute row starting in [from, to), in time order, read day file by
+// day file through readQuarterFile. Missing days are simply absent.
+ScanResult scanQuarterRows(const DailyHistoryStorage &storage, uint32_t from, uint32_t to, RowFn fn,
+                           void *context, ScanStats &stats);
+
+// False outside 2020-2099 or for a month outside 1-12.
+bool hourlyFilePath(uint32_t utc_year, uint32_t utc_month, char (&out)[kPathCapacity]);
 
 } // namespace LongHistoryFiles
