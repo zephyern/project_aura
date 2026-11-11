@@ -467,6 +467,8 @@ void AuraNetworkManager::attachDailyHistory(SdCardManager &sdCard, DailyExtremaH
     web_ctx_.long_history = longHistory;
 }
 
+void AuraNetworkManager::attachWeather(WeatherManager &weather) { web_ctx_.weather = &weather; }
+
 void AuraNetworkManager::attachCommandQueue(NetworkCommandQueue &commandQueue) {
     g_network_command_queue = &commandQueue;
 }

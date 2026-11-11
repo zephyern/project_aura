@@ -55,6 +55,9 @@ DEFINE_HANDLER(history_settings_get_handle)
 DEFINE_HANDLER(history_settings_post_handle)
 DEFINE_HANDLER(charts_settings_get_handle)
 DEFINE_HANDLER(charts_settings_post_handle)
+DEFINE_HANDLER(weather_settings_get_handle)
+DEFINE_HANDLER(weather_settings_post_handle)
+DEFINE_HANDLER(weather_geocode_handle)
 DEFINE_HANDLER(state_handle_data)
 DEFINE_HANDLER(events_handle_data)
 DEFINE_HANDLER(diag_handle_data)
@@ -269,6 +272,20 @@ void test_web_route_registry_registers_charts_settings_endpoints() {
     TEST_ASSERT_TRUE(post->handler == charts_settings_post_handle);
 }
 
+void test_web_route_registry_registers_weather_endpoints() {
+    CapturingBackend backend = capture_routes();
+
+    const CapturedRoute *get = backend.find(RouteMethod::Get, "/api/weather/settings");
+    TEST_ASSERT_NOT_NULL(get);
+    TEST_ASSERT_TRUE(get->handler == weather_settings_get_handle);
+    const CapturedRoute *post = backend.find(RouteMethod::Post, "/api/weather/settings");
+    TEST_ASSERT_NOT_NULL(post);
+    TEST_ASSERT_TRUE(post->handler == weather_settings_post_handle);
+    const CapturedRoute *geocode = backend.find(RouteMethod::Post, "/api/weather/geocode");
+    TEST_ASSERT_NOT_NULL(geocode);
+    TEST_ASSERT_TRUE(geocode->handler == weather_geocode_handle);
+}
+
 void test_web_route_registry_has_no_duplicate_uri_method_pairs() {
     CapturingBackend backend = capture_routes();
 
@@ -294,6 +311,7 @@ int main(int, char **) {
     RUN_TEST(test_web_route_registry_registers_ota_upload_endpoints);
     RUN_TEST(test_web_route_registry_registers_history_endpoints);
     RUN_TEST(test_web_route_registry_registers_charts_settings_endpoints);
+    RUN_TEST(test_web_route_registry_registers_weather_endpoints);
     RUN_TEST(test_web_route_registry_has_no_duplicate_uri_method_pairs);
     RUN_TEST(test_esp_http_server_route_capacity_covers_registered_routes);
     return UNITY_END();

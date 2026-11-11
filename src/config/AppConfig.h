@@ -797,5 +797,15 @@ namespace Config {
         StorageHealth::FullAction history_full_action = StorageHealth::kDefaultFullAction;
         // Optional chart features (docs/CHARTS_HISTORY.md), all off by default.
         ChartsSettings::Values charts{};
+
+        // Optional outdoor temperature from OpenWeatherMap (docs/WEATHER.md).
+        // Off unless turned on. The key is never sent back by a route or logged.
+        bool weather_enabled = false;
+        String weather_api_key;
+        // The location is only set after the user confirms a geocoding match.
+        bool weather_location_set = false;
+        double weather_lat = 0.0;
+        double weather_lon = 0.0;
+        String weather_place_label;
     };
 }

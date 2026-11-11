@@ -26,6 +26,14 @@ constexpr const char *kHistoryLogEnabledKey = "log_enabled";
 constexpr const char *kHistoryFullActionKey = "full_action";
 // Optional chart features (docs/CHARTS_HISTORY.md); keys in ChartsSettings::kFields.
 constexpr const char *kChartsSection = "charts";
+// Optional outdoor temperature (docs/WEATHER.md).
+constexpr const char *kWeatherSection = "weather";
+constexpr const char *kWeatherEnabledKey = "enabled";
+constexpr const char *kWeatherApiKeyKey = "api_key";
+constexpr const char *kWeatherLocationSetKey = "location_set";
+constexpr const char *kWeatherLatKey = "lat";
+constexpr const char *kWeatherLonKey = "lon";
+constexpr const char *kWeatherPlaceLabelKey = "place_label";
 
 struct TextSnapshot {
     bool exists = false;
@@ -596,6 +604,30 @@ void StorageManager::saveMqttEnabled(bool enabled) {
     }
 }
 
+bool StorageManager::saveWeatherSettings(bool enabled, const String *new_api_key,
+                                         const WeatherLocation *location) {
+    const Config::StoredConfig previous = config_;
+    config_.weather_enabled = enabled;
+    if (new_api_key) config_.weather_api_key = *new_api_key;
+    if (location) {
+        config_.weather_location_set = true;
+        config_.weather_lat = location->lat;
+        config_.weather_lon = location->lon;
+        config_.weather_place_label = location->label;
+    }
+    if (!saveConfig(true)) {
+        config_.weather_enabled = previous.weather_enabled;
+        config_.weather_api_key = previous.weather_api_key;
+        config_.weather_location_set = previous.weather_location_set;
+        config_.weather_lat = previous.weather_lat;
+        config_.weather_lon = previous.weather_lon;
+        config_.weather_place_label = previous.weather_place_label;
+        LOGE("Storage", "failed to persist weather settings");
+        return false;
+    }
+    return true;
+}
+
 bool StorageManager::saveHistorySettings(bool log_enabled, StorageHealth::FullAction full_action) {
     const bool previous_log = config_.history_log_enabled;
     const StorageHealth::FullAction previous_action = config_.history_full_action;
@@ -927,6 +959,16 @@ bool StorageManager::loadConfig() {
         }
     }
 
+    ArduinoJson::JsonObject weather = root[kWeatherSection].as<ArduinoJson::JsonObject>();
+    if (!weather.isNull()) {
+        readValue(weather, kWeatherEnabledKey, loaded.weather_enabled);
+        readString(weather, kWeatherApiKeyKey, loaded.weather_api_key);
+        readValue(weather, kWeatherLocationSetKey, loaded.weather_location_set);
+        readValue(weather, kWeatherLatKey, loaded.weather_lat);
+        readValue(weather, kWeatherLonKey, loaded.weather_lon);
+        readString(weather, kWeatherPlaceLabelKey, loaded.weather_place_label);
+    }
+
     ArduinoJson::JsonObject backlight = root["backlight"].as<ArduinoJson::JsonObject>();
     if (!backlight.isNull()) {
         readValue(backlight, "timeout_s", loaded.backlight_timeout_s);
@@ -1062,6 +1104,14 @@ bool StorageManager::saveConfigInternal() {
     for (const ChartsSettings::Field &field : ChartsSettings::kFields) {
         charts[field.key] = config_.charts.*field.member;
     }
+
+    ArduinoJson::JsonObject weather = root[kWeatherSection].to<ArduinoJson::JsonObject>();
+    weather[kWeatherEnabledKey] = config_.weather_enabled;
+    weather[kWeatherApiKeyKey] = config_.weather_api_key;
+    weather[kWeatherLocationSetKey] = config_.weather_location_set;
+    weather[kWeatherLatKey] = config_.weather_lat;
+    weather[kWeatherLonKey] = config_.weather_lon;
+    weather[kWeatherPlaceLabelKey] = config_.weather_place_label;
 
     ArduinoJson::JsonObject backlight = root["backlight"].to<ArduinoJson::JsonObject>();
     backlight["timeout_s"] = config_.backlight_timeout_s;

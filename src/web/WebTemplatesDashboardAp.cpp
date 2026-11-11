@@ -766,6 +766,26 @@ const char kDashboardPageTemplateAp[] PROGMEM = R"HTML_DASH_AP(
           </div>
           <div class="sd-note" id="chartsSettingsNote" role="status" aria-live="polite"></div>
         </div>
+        <div class="sg">
+          <div class="sg-title">Outdoor Weather</div>
+          <div class="sd-actions" id="weatherSettings">
+            <label><input type="checkbox" id="weatherEnabled"> Outdoor temperature from OpenWeatherMap</label>
+            <label>OpenWeatherMap API key <input type="password" id="weatherApiKey" autocomplete="off" maxlength="64"></label>
+            <label>Find the place by
+              <select id="weatherLookupKind">
+                <option value="city">City name</option>
+                <option value="zip">ZIP / postal code</option>
+              </select>
+            </label>
+            <label>City or code <input type="text" id="weatherQuery" maxlength="96"></label>
+            <label>Country (2-letter code) <input type="text" id="weatherCountry" maxlength="2"></label>
+            <button class="btn" type="button" id="weatherFindBtn">Find place</button>
+            <label>Match <select id="weatherMatch"></select></label>
+            <button class="btn" type="button" id="weatherSaveBtn">Save weather settings</button>
+          </div>
+          <div class="sd-note" id="weatherState" role="status" aria-live="polite"></div>
+          <div class="sd-note" id="weatherNote" role="status" aria-live="polite"></div>
+        </div>
       </div>
       <div class="system-col">
         <div class="sg">
@@ -2187,6 +2207,88 @@ async function saveChartSettings() {
     if (!result || result.success !== true) throw new Error(result && result.error || 'Save failed.');
     renderChartSettings(result);
     if (note) note.textContent = 'Chart settings saved.';
+  } catch (error) {
+    if (note) note.textContent = error && error.message || 'Save failed.';
+  }
+}
+
+// Outdoor weather (/api/weather/settings, /api/weather/geocode; docs/WEATHER.md).
+// The device never sends the key back, only whether one is saved. An empty key
+// box keeps the saved key; the place is only sent once a match is picked.
+let weatherMatches = [];
+function weatherSettingsPayload(enabled, apiKey, match) {
+  const payload = { enabled };
+  if (apiKey) payload.api_key = apiKey;
+  if (match) payload.location = { lat: match.lat, lon: match.lon, label: match.label };
+  return payload;
+}
+function weatherStateText(settings) {
+  const parts = [settings.key_saved ? 'API key saved.' : 'No API key saved.'];
+  parts.push(settings.location_set ? 'Place: ' + settings.place_label + '.' : 'No place picked.');
+  let status = 'Status: ' + settings.status_text;
+  if (settings.status === 'ok' && isNum(settings.temp_c)) status += ' (' + settings.temp_c.toFixed(1) + ' \u00b0C)';
+  parts.push(status + '.');
+  return parts.join(' ');
+}
+function renderWeatherSettings(settings) {
+  const box = document.getElementById('weatherEnabled');
+  if (box) box.checked = settings.enabled === true;
+  const state = document.getElementById('weatherState');
+  if (state) state.textContent = weatherStateText(settings);
+}
+function renderWeatherMatches(matches) {
+  weatherMatches = Array.isArray(matches) ? matches : [];
+  const select = document.getElementById('weatherMatch');
+  if (!select) return;
+  select.innerHTML = '';
+  weatherMatches.forEach((match, index) => {
+    const option = document.createElement('option');
+    option.value = String(index);
+    option.textContent = match.label + ' (' + match.lat.toFixed(4) + ', ' + match.lon.toFixed(4) + ')';
+    select.appendChild(option);
+  });
+}
+function pickedWeatherMatch() {
+  const select = document.getElementById('weatherMatch');
+  if (!select || select.value === '') return null;
+  return weatherMatches[Number(select.value)] || null;
+}
+async function loadWeatherSettings() {
+  const response = await fetch('/api/weather/settings', { cache: 'no-store' });
+  const settings = await response.json();
+  if (!response.ok || settings.success !== true) throw new Error(settings.error || 'Weather settings unavailable.');
+  renderWeatherSettings(settings);
+}
+async function findWeatherPlace() {
+  const note = document.getElementById('weatherNote');
+  try {
+    const result = await postJson('/api/weather/geocode', {
+      kind: document.getElementById('weatherLookupKind').value,
+      query: document.getElementById('weatherQuery').value.trim(),
+      country: document.getElementById('weatherCountry').value.trim().toUpperCase(),
+    });
+    if (!result || result.success !== true) throw new Error(result && result.error || 'Lookup failed.');
+    renderWeatherMatches(result.matches);
+    if (note) note.textContent = weatherMatches.length
+      ? 'Pick the right match, then save.'
+      : 'No place found. Check the spelling and the country code.';
+  } catch (error) {
+    renderWeatherMatches([]);
+    if (note) note.textContent = error && error.message || 'Lookup failed.';
+  }
+}
+async function saveWeatherSettings() {
+  const note = document.getElementById('weatherNote');
+  try {
+    const keyBox = document.getElementById('weatherApiKey');
+    const result = await postJson('/api/weather/settings',
+      weatherSettingsPayload(document.getElementById('weatherEnabled').checked, keyBox.value.trim(),
+                             pickedWeatherMatch()));
+    if (!result || result.success !== true) throw new Error(result && result.error || 'Save failed.');
+    keyBox.value = '';
+    renderWeatherMatches([]);
+    renderWeatherSettings(result);
+    if (note) note.textContent = 'Weather settings saved.';
   } catch (error) {
     if (note) note.textContent = error && error.message || 'Save failed.';
   }
@@ -3752,6 +3854,16 @@ document.getElementById('chartsSettingsSaveBtn').addEventListener('click', () =>
 loadChartSettings().catch(error => {
   const note = document.getElementById('chartsSettingsNote');
   if (note) note.textContent = error && error.message || 'Chart settings unavailable.';
+});
+document.getElementById('weatherFindBtn').addEventListener('click', () => {
+  findWeatherPlace().catch(() => {});
+});
+document.getElementById('weatherSaveBtn').addEventListener('click', () => {
+  saveWeatherSettings().catch(() => {});
+});
+loadWeatherSettings().catch(error => {
+  const note = document.getElementById('weatherNote');
+  if (note) note.textContent = error && error.message || 'Weather settings unavailable.';
 });
 document.getElementById('sdClearHistoryBtn').addEventListener('click', () => {
   runSdServiceAction('/api/history/clear',
