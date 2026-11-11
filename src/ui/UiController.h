@@ -146,6 +146,7 @@ private:
         TEMP_GRAPH_RANGE_24H,
         TEMP_GRAPH_RANGE_MONTH, // charts.month_enabled; docs/CHARTS_HISTORY.md
         TEMP_GRAPH_RANGE_YEAR,  // charts.year_enabled
+        TEMP_GRAPH_RANGE_LIFETIME, // charts.lifetime_enabled
     };
     enum GraphZoneTone : uint8_t {
         GRAPH_ZONE_NONE = 0,
@@ -275,9 +276,10 @@ private:
     static void on_chart_band_draw_cb(lv_event_t *e);
     void draw_chart_band(lv_layer_t *layer);
     // The long ranges (docs/CHARTS_HISTORY.md), read from the long-term
-    // history: one calendar month or one calendar year, stepped with ‹ ›.
-    enum class LongRange : uint8_t { Month, Year };
-    static constexpr size_t kLongRangeCount = 2;
+    // history: one calendar month or one calendar year, stepped with ‹ ›, or
+    // the whole history (Lifetime).
+    enum class LongRange : uint8_t { Month, Year, Lifetime };
+    static constexpr size_t kLongRangeCount = 3;
     // One row per range-button group, so the long-range buttons are bound,
     // styled, shown and handled by one table, not per sensor.
     struct RangeButton {
@@ -300,10 +302,10 @@ private:
     static bool long_range_of(TempGraphRange graph_range, LongRange &range);
     enum class PeriodChartStatus : uint8_t { Ready, ClockNotSet, HistoryOff, Unreadable, Busy };
     // What the time labels under the chart show: clock times back from the
-    // newest five-minute entry, or the day of the month / the month across
-    // [first, last].
+    // newest five-minute entry, or the day of the month / the month / the
+    // year and month across [first, last].
     struct ChartAxis {
-        enum class Kind : uint8_t { Recent, Days, Months };
+        enum class Kind : uint8_t { Recent, Days, Months, YearMonths };
         Kind kind = Kind::Recent;
         bool valid = false;
         int64_t first = 0;
@@ -313,6 +315,7 @@ private:
     struct PeriodNav {
         ChartPeriod::Navigator nav{};
         bool valid = false; // false until the clock gave a local period
+        uint32_t first = 0; // Lifetime: UTC start of the oldest record
     };
     bool long_range_enabled(LongRange range) const;
     const RangeGroup *active_range_group() const;
@@ -321,7 +324,7 @@ private:
     void open_period_navigator(LongRange range);
     void step_chart_period(ChartPeriod::Step step);
     uint16_t period_line_points(LongRange range) const;
-    bool period_bounds(LongRange range, uint32_t &start, uint32_t &end) const;
+    bool period_layout(LongRange range, LongChartSeries::Layout &layout) const;
     PeriodChartStatus load_period_chart(LongRange range, int metric_id);
     GraphSeriesStats populate_period_chart_series(lv_obj_t *chart,
                                                   lv_chart_series_t *series,

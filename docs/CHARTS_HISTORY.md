@@ -19,6 +19,7 @@ saver and the web API all walk that list, so a new setting is one new row there.
 | `band_enabled` | `false` | Faded min/max band on the 1h/3h/24h charts |
 | `month_enabled` | `false` | Month range on every sensor chart |
 | `year_enabled` | `false` | Year range on every sensor chart |
+| `lifetime_enabled` | `false` | Lifetime range ("All") on every sensor chart |
 
 - A key missing from the stored config keeps its default (off), like every other setting.
 - `StorageManager::saveChartsSettings` saves the whole section; when the save fails it puts
@@ -197,3 +198,38 @@ progress, only inside the range; refused when off), `test/test_long_chart_series
 day of a year with both daylight saving changes gets its own slot).
 
 Not verified on hardware: the look of the Year button and month labels on the real panels.
+
+## Lifetime range (`lifetime_enabled`)
+
+With the setting on, every range group gets an **All** button after Year. It shows
+everything recorded, from the oldest record to now, from the week ladder
+(`/aura/history/weeks/w1.csv`, `w2.csv`, ... `w1024.csv`, UTC weeks from Monday
+2026-01-05).
+
+- **Level:** `LifetimeChart::chooseLevels` takes the finest ladder level whose buckets
+  from the oldest record to now number at most 300 (`WeeklySummary::kMaxPointsPerLevel`,
+  the same bound the ladder keeps per level) for the line, and the next finer level for
+  the band (one week when the line is weekly). A year of data is about 52 weekly points;
+  after 300 weeks the line becomes two-weekly with a weekly band, and so on.
+- **Reading:** only the band level is read, through `LongHistory::weeklyChart`. Two band
+  records combine exactly into one line slot (`LongChartSeries::Builder`), so the coarser
+  file is not needed. The ladder writes only complete buckets, so `weeklyChart` follows the
+  level's file with the one-week records after its last bucket and then the week in
+  progress: the chart always reaches the present.
+- **Header:** there is no period to step, so the sensor name stays and there are no ‹ ›.
+- **Time labels:** year and month (`2026-11`).
+- Records before the ladder's anchor (2026-01-05) are not in the ladder; the chart starts
+  at the anchor. The messages, the hourly re-read, the gas sensor check and the return to
+  3h when the setting is turned off work as for Month.
+
+How it is built: `src/ui/LifetimeChart.{h,cpp}` (the level choice), one more row in
+`UiController::kLongRangeSpecs`, `LongHistory::weeklyChart` (the same reader as the hourly
+and daily charts) and `LongHistory::firstRecordStart`. The button text is in all 11
+languages (10 machine translations for review).
+
+Host tests: `test/test_lifetime_chart` (one week, the 300-point limit, doubling levels and
+their alignment, the anchor, impossible times), `test/test_long_history` (`weeklyChart` at
+level 1 and at a level with no file yet, an unknown level, `firstRecordStart`; refused
+when off).
+
+Not verified on hardware: the look of the All button and the year-month labels.

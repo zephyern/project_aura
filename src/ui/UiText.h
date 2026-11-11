@@ -346,6 +346,7 @@ inline const char *DacConnectNetwork() { return UiStrings::text(UiStrings::TextI
 inline const char *LabelAboutTextFormat() { return UiStrings::text(UiStrings::TextId::LabelAboutTextFormat); }
 inline const char *LabelChartRangeMonth() { return UiStrings::text(UiStrings::TextId::LabelChartRangeMonth); }
 inline const char *LabelChartRangeYear() { return UiStrings::text(UiStrings::TextId::LabelChartRangeYear); }
+inline const char *LabelChartRangeLifetime() { return UiStrings::text(UiStrings::TextId::LabelChartRangeLifetime); }
 inline const char *LabelChartPeriodTitle() { return UiStrings::text(UiStrings::TextId::LabelChartPeriodTitle); }
 inline const char *MsgChartHistoryOff() { return UiStrings::text(UiStrings::TextId::MsgChartHistoryOff); }
 inline const char *MsgChartHistoryUnreadable() { return UiStrings::text(UiStrings::TextId::MsgChartHistoryUnreadable); }

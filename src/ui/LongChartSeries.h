@@ -18,6 +18,16 @@
 // mean, low and high. Slots without a record stay gaps.
 namespace LongChartSeries {
 
+// What one long chart load covers: [start, end), the slot sizes of the line
+// and the band, and the week-ladder level read for the band (Lifetime only).
+struct Layout {
+    uint32_t start = 0;
+    uint32_t end = 0;
+    uint32_t line_slot_seconds = 0;
+    uint32_t band_slot_seconds = 0;
+    uint32_t band_weeks = 0;
+};
+
 struct Grid {
     uint32_t first_start = 0;  // UTC start of slot 0
     uint32_t slot_seconds = 0;

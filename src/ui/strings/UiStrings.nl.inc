@@ -403,3 +403,4 @@
     "okt",
     "nov",
     "dec",
+    "Alles",

@@ -411,3 +411,4 @@
     "loka",
     "marras",
     "joulu",
+    "Kaikki",
