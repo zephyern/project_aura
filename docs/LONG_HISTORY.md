@@ -1,8 +1,8 @@
 # Long-term Aura history (SD card)
 
 Status: being built as a stack of small pull requests. Nothing here changes device
-behaviour until the `history.log_enabled` setting exists and is turned on; it ships
-off. This file grows with each pull request in the stack.
+behaviour until the `history.log_enabled` setting is turned on; it ships off. This file
+grows with each pull request in the stack.
 
 The existing five-minute history ([FIVE_MINUTE_HISTORY.md](FIVE_MINUTE_HISTORY.md)) keeps
 the last 24 hours on flash and is unchanged. Long-term history is a separate, append-only
@@ -141,3 +141,35 @@ and removes the month and year directories left empty. It refuses to run without
 time and logs one line with the counts.
 
 Host tests: `test/test_forward_only_guard`.
+
+## Recording 15-minute rows
+
+`src/modules/QuarterHourLogger.{h,cpp}` is ChartsHistory's interval listener. It runs only
+when the setting `history.log_enabled` (`/config.json`, key `history.log_enabled`) is on;
+the setting ships off, and a missing key keeps it off. Turning it on from the device and
+the web page arrives with the history settings later in the stack; until then it can only
+be set in `/config.json`.
+
+- It adds the three five-minute intervals of each UTC quarter hour together with
+  `HistoryAggregate::combine`, so the row's sum, count, low and high are exact, and the low
+  and high times are the interval start plus the second ChartsHistory reported.
+- A quarter is written when its third interval arrives, when an interval of a later
+  quarter arrives, or, from the main loop's `poll()`, once trusted time is five minutes past
+  the quarter's end (ChartsHistory completes an interval when the next one begins).
+- A quarter without any valid metric gets no row. An interval for a quarter already
+  written is refused and logged.
+- If the optional gas sensor type changes within a quarter, the earlier gas readings of
+  that quarter are dropped and logged (gases are never mixed, as in ChartsHistory).
+- Rows go to the UTC day file through the forward-only rule; a new file starts with the
+  header. A power cut loses at most the unwritten quarter (up to 15 minutes).
+- When the card becomes ready it is prepared once: torn-tail repair of the newest file,
+  then the newest row's time for the forward-only rule. A newest file that cannot be read
+  stops recording with a write error rather than being overtaken.
+
+`status()` is typed for the storage status and the alert bar that come later in the stack:
+`Off`, `NoCard`, `Recording`, `ClockBehind` (with the last row's time) or `WriteError`
+(with the storage failure kind), plus counters of rows written and quarters refused.
+
+Host tests: `test/test_quarter_hour_logger` (default off, exact row from three intervals,
+gaps and the poll close, restart mid-quarter with torn tail, clock behind, UTC midnight
+file switch, no card and write failure, optional gas change, single listener).

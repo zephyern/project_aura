@@ -788,5 +788,8 @@ namespace Config {
         bool dac_auto_armed = false;
 
         ThemeConfig theme{};
+
+        // Long-term SD history (docs/LONG_HISTORY.md). Off unless turned on.
+        bool history_log_enabled = false;
     };
 }

@@ -20,6 +20,10 @@
 
 namespace {
 
+// Long-term SD history settings (docs/LONG_HISTORY.md).
+constexpr const char *kHistorySection = "history";
+constexpr const char *kHistoryLogEnabledKey = "log_enabled";
+
 struct TextSnapshot {
     bool exists = false;
     String text;
@@ -877,6 +881,11 @@ bool StorageManager::loadConfig() {
         readString(ui, "display_name", loaded.web_display_name);
     }
 
+    ArduinoJson::JsonObject history = root[kHistorySection].as<ArduinoJson::JsonObject>();
+    if (!history.isNull()) {
+        readValue(history, kHistoryLogEnabledKey, loaded.history_log_enabled);
+    }
+
     ArduinoJson::JsonObject backlight = root["backlight"].as<ArduinoJson::JsonObject>();
     if (!backlight.isNull()) {
         readValue(backlight, "timeout_s", loaded.backlight_timeout_s);
@@ -1003,6 +1012,9 @@ bool StorageManager::saveConfigInternal() {
     ui["pressure_altitude_m"] = config_.pressure_altitude_m;
     ui["display_name"] = config_.web_display_name;
     ui["lang"] = static_cast<uint8_t>(config_.language);
+
+    ArduinoJson::JsonObject history = root[kHistorySection].to<ArduinoJson::JsonObject>();
+    history[kHistoryLogEnabledKey] = config_.history_log_enabled;
 
     ArduinoJson::JsonObject backlight = root["backlight"].to<ArduinoJson::JsonObject>();
     backlight["timeout_s"] = config_.backlight_timeout_s;
