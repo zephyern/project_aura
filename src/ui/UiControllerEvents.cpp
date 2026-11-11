@@ -1121,7 +1121,7 @@ void UiController::on_temp_range_1h_event(lv_event_t *e) {
         return;
     }
     LOGD("UI", "temp range 1h pressed, code=%d", static_cast<int>(code));
-    if (info_sensor != INFO_TEMP) {
+    if (!temp_chart_selected()) {
         info_sensor = INFO_TEMP;
         restore_sensor_info_selection();
     }
@@ -1136,7 +1136,7 @@ void UiController::on_temp_range_3h_event(lv_event_t *e) {
         return;
     }
     LOGD("UI", "temp range 3h pressed, code=%d", static_cast<int>(code));
-    if (info_sensor != INFO_TEMP) {
+    if (!temp_chart_selected()) {
         info_sensor = INFO_TEMP;
         restore_sensor_info_selection();
     }
@@ -1151,7 +1151,7 @@ void UiController::on_temp_range_24h_event(lv_event_t *e) {
         return;
     }
     LOGD("UI", "temp range 24h pressed, code=%d", static_cast<int>(code));
-    if (info_sensor != INFO_TEMP) {
+    if (!temp_chart_selected()) {
         info_sensor = INFO_TEMP;
         restore_sensor_info_selection();
     }

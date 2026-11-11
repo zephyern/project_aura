@@ -84,6 +84,7 @@ void UiEventBinder::bindAvailableEvents(UiController &owner, int screen_id) {
         {objects.btn_web_page, UiController::on_web_page_event_cb, LV_EVENT_CLICKED},
         {objects.btn_web_page_back, UiController::on_web_page_back_event_cb, LV_EVENT_CLICKED},
         {objects.card_temp_pro, UiController::on_card_temp_event_cb, LV_EVENT_CLICKED},
+        {objects.card_outdoor_pro, UiController::on_card_outdoor_event_cb, LV_EVENT_CLICKED},
         {objects.card_voc_pro, UiController::on_card_voc_event_cb, LV_EVENT_CLICKED},
         {objects.card_nox_pro, UiController::on_card_nox_event_cb, LV_EVENT_CLICKED},
         {objects.card_voc_nox, UiController::on_card_voc_nox_event_cb, LV_EVENT_CLICKED},

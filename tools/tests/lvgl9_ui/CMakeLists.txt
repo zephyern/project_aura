@@ -13,7 +13,7 @@ file(GLOB fonts "${AURA_ROOT}/src/ui/ui_font_*.c")
 file(GLOB images "${AURA_ROOT}/src/ui/ui_image_*.c")
 add_executable(aura_ui_check ui_check.cpp ${fonts} ${images}
     "${AURA_ROOT}/src/ui/screens.c" "${AURA_ROOT}/src/ui/styles.c"
-    "${AURA_ROOT}/src/ui/images.c")
+    "${AURA_ROOT}/src/ui/images.c" "${AURA_ROOT}/src/ui/UiWeatherLayout.cpp")
 target_include_directories(aura_ui_check PRIVATE "${AURA_ROOT}/src")
 target_link_libraries(aura_ui_check PRIVATE lvgl::lvgl)
 target_compile_features(aura_ui_check PRIVATE cxx_std_17)
