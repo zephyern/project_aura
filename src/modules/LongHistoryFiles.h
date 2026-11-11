@@ -88,4 +88,16 @@ bool dailyFilePath(uint32_t local_year, char (&out)[kPathCapacity]);
 // False unless `weeks` is a power of two from 1 to 1024.
 bool weeklyFilePath(uint32_t weeks, char (&out)[kPathCapacity]);
 
+// Removes every file and directory under `root`, then `root` itself.
+// Absent: nothing was there. Failed: see the storage's lastFailureKind();
+// whatever was removed before the failure stays removed.
+enum class TreeRemoveResult : uint8_t { Removed, Absent, Failed };
+TreeRemoveResult removeTree(DailyHistoryStorage &storage, const char *root);
+
+// Atomically drops every row starting at or after `cut` from a 15-minute file
+// (`span` false) or a summary file (`span` true: rows whose end is after
+// `cut`). Rows are in time order, so this keeps a prefix of the file.
+enum class CutResult : uint8_t { Cut, Unchanged, Absent, Failed };
+CutResult cutRowsFrom(DailyHistoryStorage &storage, const char *path, bool span, uint32_t cut);
+
 } // namespace LongHistoryFiles

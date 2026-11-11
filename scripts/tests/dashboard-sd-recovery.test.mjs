@@ -117,3 +117,23 @@ test('active recovery and paused recovery keep manual reconnect disabled', () =>
     assert.equal(h.get('sdReconnectBtn').disabled,true);
   }
 });
+
+test('long-term history on: clear confirms name the long-term files and the first day', () => {
+  const h=harness();
+  const payload={...healthy(), long_history:{first_day:'2026-11-07'}};
+  payload.daily={...payload.daily, pending_day_count:0, pending_retry_ms:0, dropped_pending_days:0,
+    current_day_units_c:true, preferred_units_c:true};
+  h.context.renderSdHistoryStatus(payload);
+  assert.equal(h.context.sdClearHistoryConfirmText(payload),
+    'Delete ALL long-term history on the SD card? Every 15-minute, hourly, daily and weekly file since 2026-11-07, and the old daily file, will be deleted. This cannot be undone.');
+  assert.equal(h.context.sdClearCurrentConfirmText(payload), "Delete today's history only? Earlier days are kept.");
+  assert.equal(h.get('sdClearHistoryBtn').disabled,false);
+  assert.equal(h.get('sdExportCsvBtn').attrs['aria-disabled'],'false');
+});
+
+test('long-term history off: clear confirms are unchanged', () => {
+  const h=harness();
+  assert.equal(h.context.sdClearHistoryConfirmText(healthy()), 'Delete daily CSV and current day history?');
+  assert.equal(h.context.sdClearCurrentConfirmText(healthy()), 'Delete current day history snapshot?');
+  assert.equal(h.context.sdClearHistoryConfirmText(null), 'Delete daily CSV and current day history?');
+});

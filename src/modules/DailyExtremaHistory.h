@@ -77,6 +77,21 @@ public:
     // Metric keys, units and decimals, in ChartsHistory::Metric order. Also the
     // column keys of the long-term history files (docs/LONG_HISTORY.md).
     static const MetricDef &metricDef(uint8_t index);
+    // The one formatter of the daily CSV (header and one metric row), shared
+    // with the long-term history download so both produce identical text.
+    static const char *csvHeader();
+    struct CsvMetricValues {
+        float min_value = 0.0f;
+        uint32_t min_epoch = 0;
+        float max_value = 0.0f;
+        uint32_t max_epoch = 0;
+        uint32_t sample_count = 0;
+    };
+    // Appends "date,metric,unit,min,min_time,max,max_time,sample_count\n";
+    // `day` is "YYYY-MM-DD", values are stored units (C, hPa, raw gas).
+    static void appendCsvMetricRow(String &rows, const char *day, uint8_t metric_index,
+                                   const CsvMetricValues &values, bool units_c,
+                                   uint8_t optional_gas_type);
 
 private:
     struct MetricState {

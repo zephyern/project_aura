@@ -2074,6 +2074,20 @@ function setSdServiceButtonsDisabled(disabled) {
   });
 }
 
+// With the long-term history log on (payload.long_history present) the clear
+// buttons delete the long-term files, and the confirm says so plainly.
+function sdClearHistoryConfirmText(payload) {
+  const longHistory = payload && payload.long_history;
+  if (!longHistory) return 'Delete daily CSV and current day history?';
+  const since = typeof longHistory.first_day === 'string' ? ' since ' + longHistory.first_day : '';
+  return 'Delete ALL long-term history on the SD card? Every 15-minute, hourly, daily and weekly file' +
+    since + ', and the old daily file, will be deleted. This cannot be undone.';
+}
+function sdClearCurrentConfirmText(payload) {
+  if (!(payload && payload.long_history)) return 'Delete current day history snapshot?';
+  return "Delete today's history only? Earlier days are kept.";
+}
+
 async function runSdServiceAction(url, confirmText, progressText, successText) {
   if (sdServiceBusy || sdReconnectBusy) return;
   if (confirmText && !window.confirm(confirmText)) return;
@@ -3612,13 +3626,13 @@ document.getElementById('sdRefreshBtn').addEventListener('click', () => { refres
 document.getElementById('sdReconnectBtn').addEventListener('click', () => { reconnectSd().catch(() => {}); });
 document.getElementById('sdClearCurrentBtn').addEventListener('click', () => {
   runSdServiceAction('/api/history/current-day/clear',
-                     'Delete current day history snapshot?',
+                     sdClearCurrentConfirmText(sdHistoryStatusCache),
                      'Deleting current day snapshot...',
                      'Current day history deleted.').catch(() => {});
 });
 document.getElementById('sdClearHistoryBtn').addEventListener('click', () => {
   runSdServiceAction('/api/history/clear',
-                     'Delete daily CSV and current day history?',
+                     sdClearHistoryConfirmText(sdHistoryStatusCache),
                      'Deleting history files...',
                      'History deleted.').catch(() => {});
 });

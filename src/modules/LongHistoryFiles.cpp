@@ -7,6 +7,7 @@
 #include <new>
 #include <stdio.h>
 #include <string.h>
+#include <vector>
 
 #include "core/LocalDate.h"
 #include "core/Logger.h"
@@ -349,6 +350,93 @@ bool weeklyFilePath(uint32_t weeks, char (&out)[kPathCapacity]) {
     if (weeks == 0 || weeks > 1024 || (weeks & (weeks - 1)) != 0) return false;
     snprintf(out, sizeof(out), "%s/w%u.csv", kWeeklyRoot, static_cast<unsigned>(weeks));
     return true;
+}
+
+namespace {
+
+struct Entries {
+    std::vector<String> names;
+    std::vector<bool> dirs;
+};
+bool collectEntry(const char *name, bool is_dir, void *context) {
+    Entries &e = *static_cast<Entries *>(context);
+    e.names.push_back(String(name));
+    e.dirs.push_back(is_dir);
+    return true;
+}
+
+struct FirstCut {
+    bool span;
+    uint32_t cut;
+    bool found = false;
+    size_t offset = 0;
+};
+bool findQuarterCut(const QuarterHourRow::Row &row, size_t line_offset, void *context) {
+    FirstCut &f = *static_cast<FirstCut *>(context);
+    if (row.start_epoch < f.cut) return true;
+    f.found = true;
+    f.offset = line_offset;
+    return false;
+}
+bool findSpanCut(const QuarterHourRow::SpanRow &row, size_t line_offset, void *context) {
+    FirstCut &f = *static_cast<FirstCut *>(context);
+    if (row.end_epoch <= f.cut) return true;
+    f.found = true;
+    f.offset = line_offset;
+    return false;
+}
+
+} // namespace
+
+TreeRemoveResult removeTree(DailyHistoryStorage &storage, const char *root) {
+    Entries entries;
+    switch (storage.listDir(root, &collectEntry, &entries)) {
+        case DirListResult::Absent:
+            return TreeRemoveResult::Absent;
+        case DirListResult::Failed:
+            return TreeRemoveResult::Failed;
+        case DirListResult::Listed:
+            break;
+    }
+    for (size_t i = 0; i < entries.names.size(); ++i) {
+        String child = String(root) + "/" + entries.names[i];
+        if (entries.dirs[i]) {
+            if (removeTree(storage, child.c_str()) == TreeRemoveResult::Failed) return TreeRemoveResult::Failed;
+        } else if (!storage.removeFile(child.c_str())) {
+            LOGE(kTag, "could not remove %s", child.c_str());
+            return TreeRemoveResult::Failed;
+        }
+    }
+    switch (storage.removeEmptyDir(root)) {
+        case DirRemoveResult::Removed:
+        case DirRemoveResult::Absent:
+            return TreeRemoveResult::Removed;
+        default:
+            LOGE(kTag, "could not remove directory %s", root);
+            return TreeRemoveResult::Failed;
+    }
+}
+
+CutResult cutRowsFrom(DailyHistoryStorage &storage, const char *path, bool span, uint32_t cut) {
+    FirstCut f{span, cut};
+    ReadStats stats;
+    const ReadResult read = span ? readSpanFile(storage, path, &findSpanCut, &f, stats)
+                                 : readQuarterFile(storage, path, &findQuarterCut, &f, stats);
+    switch (read) {
+        case ReadResult::Absent:
+            return CutResult::Absent;
+        case ReadResult::Empty:
+            return CutResult::Unchanged;
+        case ReadResult::Read: // also when the callback stopped at the cut
+            break;
+        case ReadResult::BadHeader:
+            LOGE(kTag, "%s: not a long-history file; not cut", path);
+            return CutResult::Failed;
+        case ReadResult::Failed:
+            return CutResult::Failed;
+    }
+    if (!f.found) return CutResult::Unchanged;
+    return storage.truncateAtomic(path, f.offset) ? CutResult::Cut : CutResult::Failed;
 }
 
 } // namespace LongHistoryFiles

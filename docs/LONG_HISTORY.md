@@ -265,3 +265,41 @@ bucket is exactly two buckets of the level below.
 Host tests: `test/test_week_ladder` (Monday anchor and alignment, one-week record from
 15-minute rows, no coarser level at 300 records, exact 2-week level above 300 with the
 pending last bucket, level keeps updating once started).
+
+## One daily history: the web page with the log on
+
+`src/modules/LongHistory.{h,cpp}` holds the whole long-term history (15-minute logger,
+hourly, daily and weekly writers, week ladder) and the web operations on it. Exactly one
+daily history runs, chosen at boot by `history.log_enabled`:
+
+- **Off (default):** the upstream daily history (`DailyExtremaHistory`, `daily.csv`) runs
+  and every SD-card route and button behaves exactly as before.
+- **On:** the upstream daily history is not started and its files are left untouched on
+  the card. If the log cannot start (logged), neither history runs; nothing switches back.
+
+With the log on, the existing web routes serve the long-term history:
+
+| Route | With the log on |
+|---|---|
+| `GET /api/history/daily.csv` | Generated from the daily records, in exactly the upstream `daily.csv` format (same formatter, `DailyExtremaHistory::appendCsvMetricRow`): one line per metric per local day, low and high with the real local time they happened. Values are stored in °C/hPa and converted with the unit setting at download time (upstream wrote each day in the unit chosen that day). |
+| `GET /api/history/current-day.csv` | Today's record so far (the daily writer's open day), same format. |
+| `GET /api/history/daily/status` | Same shape. `daily.*` describe today's record; `pending_*`/`dropped_*` are 0 (the long-term writers have no retry queue; a failed write shows at once). `files.daily_csv` is the generated download (its size), `files.current_day_state` today's 15-minute file. New: `long_history.first_day`, the earliest local day of any record (present only with the log on). |
+| `POST /api/history/clear` | Deletes `/aura/history/15min/`, `hourly/`, `days/`, `weeks/` and the upstream `daily.csv` and `current_day.*.bin`, then starts recording again from nothing. |
+| `POST /api/history/current-day/clear` | Deletes everything from today's local midnight on: today's 15-minute rows (in up to two UTC-named files) and every summary record that contains any of them; the summaries are then rebuilt from the 15-minute rows that remain. Earlier days are untouched. |
+
+Both clear routes answer `{success, files:[{path, existed, removed, ok}]}`; any failure
+gives `success: false` and HTTP 500, with each path listed. The dashboard confirms:
+
+- Clear history: "Delete ALL long-term history on the SD card? Every 15-minute, hourly,
+  daily and weekly file since <first day>, and the old daily file, will be deleted. This
+  cannot be undone."
+- Delete current day: "Delete today's history only? Earlier days are kept."
+
+A clear stops the writers (dropping the quarter, hour, day and week in progress), changes
+the files, then starts them again; the main loop skips history work meanwhile.
+
+Host tests: `test/test_long_history` (download byte-for-byte in the upstream format in °C
+and °F, size pass equals stream pass, clear all removes every group and the old daily
+files, a failed removal is reported, clear today across two UTC files with summaries
+rebuilt, operations refused when off), `scripts/tests/dashboard-sd-recovery.test.mjs`
+(both confirm texts with the log on and off).

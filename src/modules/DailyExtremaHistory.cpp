@@ -1079,6 +1079,35 @@ bool DailyExtremaHistory::hasAnySamples(const PersistedState &state) {
     return false;
 }
 
+const char *DailyExtremaHistory::csvHeader() { return kDailyCsvHeader; }
+
+void DailyExtremaHistory::appendCsvMetricRow(String &rows, const char *day, uint8_t metric_index,
+                                             const CsvMetricValues &values, bool units_c,
+                                             uint8_t optional_gas_type) {
+    const MetricDef &def = metricDef(metric_index);
+    const uint8_t decimals = csv_metric_decimals(def, units_c, optional_gas_type);
+    char min_time[16] = {};
+    char max_time[16] = {};
+    LocalDate::formatLocalTime(values.min_epoch, min_time, sizeof(min_time));
+    LocalDate::formatLocalTime(values.max_epoch, max_time, sizeof(max_time));
+    rows += day;
+    rows += ',';
+    rows += def.key;
+    rows += ',';
+    rows += csv_metric_unit(def, units_c, optional_gas_type);
+    rows += ',';
+    rows += format_value(csv_metric_value(def.metric, values.min_value, units_c, optional_gas_type), decimals);
+    rows += ',';
+    rows += min_time;
+    rows += ',';
+    rows += format_value(csv_metric_value(def.metric, values.max_value, units_c, optional_gas_type), decimals);
+    rows += ',';
+    rows += max_time;
+    rows += ',';
+    rows += format_uint(values.sample_count);
+    rows += '\n';
+}
+
 bool DailyExtremaHistory::appendCsvRowsForState(const PersistedState &state,
                                                 String &rows,
                                                 bool include_header) const {
@@ -1090,8 +1119,6 @@ bool DailyExtremaHistory::appendCsvRowsForState(const PersistedState &state,
     }
 
     char day_buf[16] = {};
-    char min_time[16] = {};
-    char max_time[16] = {};
     LocalDate::formatDayKey(state.day_key, day_buf, sizeof(day_buf));
 
     for (uint8_t i = 0; i < ChartsHistory::kMetricCount; ++i) {
@@ -1099,28 +1126,13 @@ bool DailyExtremaHistory::appendCsvRowsForState(const PersistedState &state,
         if (!metric.valid || metric.sample_count == 0) {
             continue;
         }
-        const MetricDef &def = metricDef(i);
-        LocalDate::formatLocalTime(metric.min_epoch, min_time, sizeof(min_time));
-        LocalDate::formatLocalTime(metric.max_epoch, max_time, sizeof(max_time));
-
-        rows += day_buf;
-        rows += ',';
-        rows += def.key;
-        rows += ',';
-        rows += csv_metric_unit(def, state.units_c != 0, state.optional_gas_type);
-        rows += ',';
-        rows += format_value(csv_metric_value(def.metric, metric.min_value, state.units_c != 0, state.optional_gas_type),
-                             csv_metric_decimals(def, state.units_c != 0, state.optional_gas_type));
-        rows += ',';
-        rows += min_time;
-        rows += ',';
-        rows += format_value(csv_metric_value(def.metric, metric.max_value, state.units_c != 0, state.optional_gas_type),
-                             csv_metric_decimals(def, state.units_c != 0, state.optional_gas_type));
-        rows += ',';
-        rows += max_time;
-        rows += ',';
-        rows += format_uint(metric.sample_count);
-        rows += '\n';
+        CsvMetricValues values;
+        values.min_value = metric.min_value;
+        values.min_epoch = metric.min_epoch;
+        values.max_value = metric.max_value;
+        values.max_epoch = metric.max_epoch;
+        values.sample_count = metric.sample_count;
+        appendCsvMetricRow(rows, day_buf, i, values, state.units_c != 0, state.optional_gas_type);
     }
     return true;
 }

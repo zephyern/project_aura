@@ -22,6 +22,7 @@ class DisplayThresholdManager;
 class SensorManager;
 class SdCardManager;
 class DailyExtremaHistory;
+class LongHistory;
 
 struct WebHandlerContext {
     WebRequest *server = nullptr;
@@ -65,4 +66,6 @@ struct WebHandlerContext {
     SensorManager *sensor_manager = nullptr;
     SdCardManager *sd_card = nullptr;
     DailyExtremaHistory *daily_extrema = nullptr;
+    // Set only when the long-term history log is on; the history routes then serve it.
+    LongHistory *long_history = nullptr;
 };
