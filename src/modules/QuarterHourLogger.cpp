@@ -68,15 +68,14 @@ bool QuarterHourLogger::prepare() {
             fail(storage_.lastFailureKind());
             return false;
         }
-        if (ForwardOnlyGuard::lastQuarterEpoch(storage_, path, last) ==
-            ForwardOnlyGuard::LastResult::Failed) {
+        const ForwardOnlyGuard::LastResult read = ForwardOnlyGuard::lastQuarterEpoch(storage_, path, last);
+        if (read == ForwardOnlyGuard::LastResult::Unsupported ||
+            read == ForwardOnlyGuard::LastResult::Failed) {
             // An unreadable newest file must not be appended to or overtaken
             // silently; it needs attention (or Clear history).
             LOGE(kTag, "cannot read the last row of %s; long-term history not recording", path);
-            // Storage reports no failure when the file itself is the problem
-            // (unsupported header): that is an invalid file.
-            const DailyStorageFailureKind kind = storage_.lastFailureKind();
-            fail(kind == DailyStorageFailureKind::None ? DailyStorageFailureKind::Invalid : kind);
+            fail(read == ForwardOnlyGuard::LastResult::Unsupported ? DailyStorageFailureKind::Invalid
+                                                                   : storage_.lastFailureKind());
             return false;
         }
     }
@@ -215,4 +214,22 @@ void QuarterHourLogger::closeQuarter() {
     status_.failure_kind = DailyStorageFailureKind::None;
     status_.state = State::Recording;
     ++status_.rows_written;
+    for (const RowListenerSlot &slot : row_listeners_) {
+        if (slot.fn) slot.fn(quarter_, slot.context);
+    }
+}
+
+bool QuarterHourLogger::addRowListener(RowListener listener, void *context) {
+    if (!listener) return false;
+    for (const RowListenerSlot &slot : row_listeners_) {
+        if (slot.fn == listener && slot.context == context) return false;
+    }
+    for (RowListenerSlot &slot : row_listeners_) {
+        if (!slot.fn) {
+            slot.fn = listener;
+            slot.context = context;
+            return true;
+        }
+    }
+    return false;
 }

@@ -195,3 +195,31 @@ combines each metric exactly. `deriveBucket` does the same for rows already in m
 
 Host tests: `test/test_history_bucket` (brute force over raw samples, hours-then-3-hours
 equals direct, partial bucket, refused records, gas change).
+
+## Hourly summaries
+
+`src/modules/HourlySummary.{h,cpp}` defines the hourly level: one record per UTC hour in
+`/aura/history/hourly/YYYY-MM.csv`, named by the UTC year and month. The records are
+written by `src/modules/SummaryWriter.{h,cpp}`, which every summary level shares, through
+`src/modules/SummaryAppender.{h,cpp}` (torn-tail repair, forward-only rule, header on a new
+file). Summary files use the span layout of the row codec: the same columns with an
+exclusive `end_utc` after the start, and low/high seconds counted from the record start.
+
+- The writer listens to the 15-minute logger's rows and runs only while
+  `history.log_enabled` is on. Each row is combined into its hour by `HistoryBucket`
+  (the one derivation); an hour is written when its last quarter arrives, when a row of a
+  later hour arrives, or from `poll()` ten minutes after the hour ends if its last quarter
+  never came. An hour without any data gets no record.
+- When the card becomes ready it is prepared once, after the 15-minute logger: the newest
+  hourly file is repaired and read, and every hour missing after its last record is rebuilt
+  from the 15-minute files, so a reboot or power cut leaves no hole the 15-minute rows can
+  fill. Rebuilt records are identical to live ones (same code path).
+- A newest hourly file whose header is not a summary header is removed and rebuilt from
+  the 15-minute rows of that month. Bad lines elsewhere are skipped and logged by the
+  shared reader.
+- `readRange(start, end)` returns the records starting in `[start, end)` from every UTC
+  month file the range touches, so a local calendar month reads from up to two files.
+
+Host tests: `test/test_hourly_summary` (span layout round trip, live hour from logged
+quarters, boot rebuild equals live and continues the open hour, damaged file rebuilt, close
+without a last quarter, range across two UTC month files).

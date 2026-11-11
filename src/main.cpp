@@ -50,6 +50,8 @@
 #include "modules/SensorManager.h"
 #include "modules/SdCardManager.h"
 #include "modules/QuarterHourLogger.h"
+#include "modules/HourlySummary.h"
+#include "modules/SummaryWriter.h"
 #include "modules/TimeManager.h"
 #include "modules/FanControl.h"
 #include "web/WebRuntime.h"
@@ -77,6 +79,8 @@ PressureHistory pressureHistory;
 ChartsHistory chartsHistory;
 SdCardManager sdCardManager;
 QuarterHourLogger quarterHourLogger(sdCardManager);
+const HourlySummary::Level hourlyLevel;
+SummaryWriter hourlySummary(sdCardManager, hourlyLevel);
 DailyExtremaHistory dailyExtremaHistory;
 AuraNetworkManager networkManager;
 MqttManager mqttManager;
@@ -731,8 +735,11 @@ void setup()
     // The card is prepared (tail repair, last row) on the first poll once ready.
     if (!quarterHourLogger.attach(chartsHistory)) {
         LOGE("History", "charts interval listener already taken; long-term history disabled");
+    } else if (!quarterHourLogger.addRowListener(&SummaryWriter::rowThunk, &hourlySummary)) {
+        LOGE("History", "hourly summary could not listen to 15-minute rows; long-term history disabled");
     } else {
         quarterHourLogger.setEnabled(storage.config().history_log_enabled);
+        hourlySummary.setEnabled(storage.config().history_log_enabled);
     }
     const AppInit::LvglInitResult lvgl_result = AppInit::initLvglAndUi(init_ctx, board);
     lvgl_ready = lvgl_result.ui_ready;
@@ -1028,7 +1035,9 @@ void loop()
                              sensor_poll.history_fresh_mask);
     }
     if (!wake_background_paused) {
-        quarterHourLogger.poll(time(nullptr), system_time_trusted);
+        const time_t history_now = time(nullptr);
+        quarterHourLogger.poll(history_now, system_time_trusted);
+        hourlySummary.poll(history_now, system_time_trusted, quarterHourLogger.prepared());
     }
     chartsRuntimeState.update(chartsHistory);
     webRuntimeState.update(currentData, sensorManager.isWarmupActive(), fanControl);

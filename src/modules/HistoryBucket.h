@@ -17,10 +17,9 @@
 // keep the earliest time they were reached.
 namespace HistoryBucket {
 
-struct Record {
-    uint32_t start_epoch = 0;
-    uint32_t end_epoch = 0; // exclusive
-    HistoryAggregate metrics[ChartsHistory::kMetricCount] = {};
+// A bucket as stored in the summary files (start, exclusive end, metrics),
+// plus how many finer records it combined.
+struct Record : QuarterHourRow::SpanRow {
     uint32_t source_records = 0; // finer records combined into this one
 
     bool empty() const;

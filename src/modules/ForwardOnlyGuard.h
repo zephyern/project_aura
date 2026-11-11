@@ -25,12 +25,17 @@ struct Decision {
 // `last_epoch` 0 means the file has no records yet.
 Decision accept(uint32_t last_epoch, uint32_t new_epoch);
 
-enum class LastResult : uint8_t { Found, NoRecords, Failed };
+enum class LastResult : uint8_t { Found, NoRecords, Unsupported, Failed };
 // Start of the last good row of a 15-minute file, read at boot after the
 // torn-tail repair. Absent, empty and header-only files have NoRecords.
-// A file with an unsupported header is Failed: it must not be appended to.
+// A file with an unsupported header is Unsupported: it must not be appended to.
+// Failed is a storage failure (see storage.lastFailureKind()).
 LastResult lastQuarterEpoch(const DailyHistoryStorage &storage, const char *path,
                             uint32_t &last_epoch);
+// The same for a summary file (hourly, daily, weekly): start and end of its
+// last record.
+LastResult lastSpan(const DailyHistoryStorage &storage, const char *path, uint32_t &last_start,
+                    uint32_t &last_end);
 
 enum class ClearResult : uint8_t { Cleared, Failed };
 struct ClearStats {

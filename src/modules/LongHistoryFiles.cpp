@@ -8,6 +8,7 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "core/LocalDate.h"
 #include "core/Logger.h"
 
 namespace LongHistoryFiles {
@@ -177,10 +178,15 @@ RepairResult repairTail(DailyHistoryStorage &storage, const char *path, const ch
     return RepairResult::Repaired;
 }
 
-ReadResult readQuarterFile(const DailyHistoryStorage &storage, const char *path, RowFn fn,
-                           void *context, ReadStats &stats) {
+namespace {
+
+// The one line reader behind every long-term file: header check, then each
+// decodable row in order; bad lines skipped and logged.
+template <typename RowT, typename HeaderDecode, typename RowDecode, typename Deliver>
+ReadResult readFile(const DailyHistoryStorage &storage, const char *path, ReadStats &stats,
+                    HeaderDecode decode_header, RowDecode decode_row, Deliver deliver) {
     stats = ReadStats{};
-    if (!path || !fn) return ReadResult::Failed;
+    if (!path) return ReadResult::Failed;
     bool exists = false;
     size_t size = 0;
     if (!storage.fileInfo(path, exists, size)) return ReadResult::Failed;
@@ -206,15 +212,15 @@ ReadResult readQuarterFile(const DailyHistoryStorage &storage, const char *path,
         if (!header_done) {
             header_done = true;
             if (overlong || !terminated ||
-                QuarterHourRow::decodeHeader(line.get(), line_len) != QuarterHourRow::DecodeResult::Ok) {
+                decode_header(line.get(), line_len) != QuarterHourRow::DecodeResult::Ok) {
                 LOGW(kTag, "%s: unsupported header, file not read", path);
                 return false;
             }
             return true;
         }
-        QuarterHourRow::Row row;
+        RowT row;
         QuarterHourRow::DecodeResult decoded = QuarterHourRow::DecodeResult::Malformed;
-        if (!overlong) decoded = QuarterHourRow::decodeRow(line.get(), line_len, row);
+        if (!overlong) decoded = decode_row(line.get(), line_len, row);
         if (!terminated || decoded != QuarterHourRow::DecodeResult::Ok) {
             ++stats.skipped;
             LOGW(kTag, "%s: skipped line %u (%s)", path, static_cast<unsigned>(line_no),
@@ -222,7 +228,7 @@ ReadResult readQuarterFile(const DailyHistoryStorage &storage, const char *path,
             return true;
         }
         ++stats.rows;
-        if (!fn(row, line_start, context)) stop = true;
+        if (!deliver(row, line_start)) stop = true;
         return !stop;
     };
 
@@ -254,6 +260,83 @@ ReadResult readQuarterFile(const DailyHistoryStorage &storage, const char *path,
         if (!finish_line(false)) return stop ? ReadResult::Read : ReadResult::BadHeader;
     }
     return header_done ? ReadResult::Read : ReadResult::BadHeader;
+}
+
+} // namespace
+
+ReadResult readQuarterFile(const DailyHistoryStorage &storage, const char *path, RowFn fn,
+                           void *context, ReadStats &stats) {
+    if (!fn) return ReadResult::Failed;
+    return readFile<QuarterHourRow::Row>(
+        storage, path, stats, &QuarterHourRow::decodeHeader, &QuarterHourRow::decodeRow,
+        [&](const QuarterHourRow::Row &row, size_t offset) { return fn(row, offset, context); });
+}
+
+ReadResult readSpanFile(const DailyHistoryStorage &storage, const char *path, SpanFn fn,
+                        void *context, ReadStats &stats) {
+    if (!fn) return ReadResult::Failed;
+    return readFile<QuarterHourRow::SpanRow>(
+        storage, path, stats, &QuarterHourRow::decodeSpanHeader, &QuarterHourRow::decodeSpanRow,
+        [&](const QuarterHourRow::SpanRow &row, size_t offset) { return fn(row, offset, context); });
+}
+
+namespace {
+struct RangeFilter {
+    uint32_t from = 0;
+    uint32_t to = 0;
+    RowFn fn = nullptr;
+    void *context = nullptr;
+    bool stopped = false;
+};
+
+bool filterRange(const QuarterHourRow::Row &row, size_t offset, void *context) {
+    RangeFilter &f = *static_cast<RangeFilter *>(context);
+    if (row.start_epoch < f.from || row.start_epoch >= f.to) return true;
+    if (!f.fn(row, offset, f.context)) {
+        f.stopped = true;
+        return false;
+    }
+    return true;
+}
+
+constexpr uint32_t kDaySeconds = 86400;
+} // namespace
+
+ScanResult scanQuarterRows(const DailyHistoryStorage &storage, uint32_t from, uint32_t to, RowFn fn,
+                           void *context, ScanStats &stats) {
+    stats = ScanStats{};
+    if (!fn || to <= from) return ScanResult::Done;
+    RangeFilter filter{from, to, fn, context, false};
+    for (uint32_t day = from - from % kDaySeconds; day < to; day += kDaySeconds) {
+        uint32_t key = 0;
+        char path[kPathCapacity];
+        if (!LocalDate::utcDayKey(day, key) || !quarterFilePath(key, path)) continue;
+        ReadStats rs;
+        switch (readQuarterFile(storage, path, &filterRange, &filter, rs)) {
+            case ReadResult::Read:
+                ++stats.files_read;
+                stats.rows_skipped += rs.skipped;
+                break;
+            case ReadResult::Absent:
+            case ReadResult::Empty:
+                break;
+            case ReadResult::BadHeader:
+                ++stats.files_unsupported; // logged by the reader
+                break;
+            case ReadResult::Failed:
+                return ScanResult::Failed;
+        }
+        if (filter.stopped) return ScanResult::Stopped;
+        if (day > UINT32_MAX - kDaySeconds) break;
+    }
+    return ScanResult::Done;
+}
+
+bool hourlyFilePath(uint32_t utc_year, uint32_t utc_month, char (&out)[kPathCapacity]) {
+    if (utc_year < kFirstYear || utc_year > kLastYear || utc_month < 1 || utc_month > 12) return false;
+    snprintf(out, sizeof(out), "%s/%04u-%02u.csv", kHourlyRoot, static_cast<unsigned>(utc_year),
+             static_cast<unsigned>(utc_month));
+    return true;
 }
 
 } // namespace LongHistoryFiles
