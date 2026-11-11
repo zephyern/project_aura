@@ -314,6 +314,22 @@ void daily_history_clear_current_day_handle() {
     });
 }
 
+void daily_history_clear_future_handle() {
+    with_ota_busy([](WebHandlerContext &context, bool ota_busy) {
+        WebDailyHistoryHandlers::handleClearFuture(context, ota_busy, WebHandlersSupport::otaBusyJson());
+    });
+}
+
+void history_settings_get_handle() {
+    with_context([](WebHandlerContext &context) { WebDailyHistoryHandlers::handleSettingsGet(context); });
+}
+
+void history_settings_post_handle() {
+    with_ota_busy([](WebHandlerContext &context, bool ota_busy) {
+        WebDailyHistoryHandlers::handleSettingsPost(context, ota_busy, WebHandlersSupport::otaBusyJson());
+    });
+}
+
 void state_handle_data() {
     with_context([](WebHandlerContext &context) {
         const WebOtaSnapshot ota_snapshot =

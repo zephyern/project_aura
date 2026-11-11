@@ -137,3 +137,22 @@ test('long-term history off: clear confirms are unchanged', () => {
   assert.equal(h.context.sdClearCurrentConfirmText(healthy()), 'Delete current day history snapshot?');
   assert.equal(h.context.sdClearHistoryConfirmText(null), 'Delete daily CSV and current day history?');
 });
+
+test('clear future-dated history shows only with the long-term log running', () => {
+  const h=harness();
+  h.context.renderSdHistoryStatus(healthy());
+  assert.equal(h.get('sdClearFutureBtn').hidden,true);
+  const payload={...healthy(), long_history:{first_day:'2026-11-07'}};
+  h.context.renderSdHistoryStatus(payload);
+  assert.equal(h.get('sdClearFutureBtn').hidden,false);
+  assert.equal(h.get('sdClearFutureBtn').disabled,false);
+});
+
+test('history settings say when a restart is needed', () => {
+  const h=harness();
+  assert.equal(h.context.historySettingsNote({log_enabled:true, restart_required:true}),
+    'Restart to start the long-term history log.');
+  assert.equal(h.context.historySettingsNote({log_enabled:false, restart_required:true}),
+    'Restart to stop the long-term history log.');
+  assert.equal(h.context.historySettingsNote({log_enabled:true, restart_required:false}), '');
+});

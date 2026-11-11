@@ -50,6 +50,9 @@ DEFINE_HANDLER(daily_history_csv_handle)
 DEFINE_HANDLER(daily_history_current_day_csv_handle)
 DEFINE_HANDLER(daily_history_clear_handle)
 DEFINE_HANDLER(daily_history_clear_current_day_handle)
+DEFINE_HANDLER(daily_history_clear_future_handle)
+DEFINE_HANDLER(history_settings_get_handle)
+DEFINE_HANDLER(history_settings_post_handle)
 DEFINE_HANDLER(state_handle_data)
 DEFINE_HANDLER(events_handle_data)
 DEFINE_HANDLER(diag_handle_data)
@@ -239,6 +242,18 @@ void test_web_route_registry_registers_history_endpoints() {
         backend.find(RouteMethod::Post, "/api/history/current-day/clear");
     TEST_ASSERT_NOT_NULL(clear_current_day);
     TEST_ASSERT_TRUE(clear_current_day->handler == daily_history_clear_current_day_handle);
+
+    const CapturedRoute *clear_future = backend.find(RouteMethod::Post, "/api/history/future/clear");
+    TEST_ASSERT_NOT_NULL(clear_future);
+    TEST_ASSERT_TRUE(clear_future->handler == daily_history_clear_future_handle);
+    TEST_ASSERT_NULL(backend.find(RouteMethod::Get, "/api/history/future/clear"));
+
+    const CapturedRoute *settings_get = backend.find(RouteMethod::Get, "/api/history/settings");
+    TEST_ASSERT_NOT_NULL(settings_get);
+    TEST_ASSERT_TRUE(settings_get->handler == history_settings_get_handle);
+    const CapturedRoute *settings_post = backend.find(RouteMethod::Post, "/api/history/settings");
+    TEST_ASSERT_NOT_NULL(settings_post);
+    TEST_ASSERT_TRUE(settings_post->handler == history_settings_post_handle);
 }
 
 void test_web_route_registry_has_no_duplicate_uri_method_pairs() {
