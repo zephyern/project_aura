@@ -8,6 +8,7 @@
 
 #include <dirent.h>
 #include <errno.h>
+#include <limits.h>
 #include <string.h>
 #include <sys/stat.h>
 #include <unistd.h>
@@ -1353,6 +1354,168 @@ bool SdCardManager::readBinary(const char *path, void *out, size_t len, size_t &
     }
     unlock();
     return ok;
+}
+
+bool SdCardManager::readRange(const char *path, size_t offset, void *out, size_t len,
+                              size_t &out_len) const {
+    constexpr const char *kOperation = "range_read";
+    out_len = 0;
+    if (!path || (!out && len != 0) || offset > static_cast<size_t>(LONG_MAX)) {
+        recordFailure(kOperation, "validate", EINVAL, DailyStorageFailureKind::Invalid, false);
+        return false;
+    }
+    if (!lock()) {
+        recordFailure(kOperation, "lock", EBUSY, DailyStorageFailureKind::Busy, false);
+        return false;
+    }
+    const String full = fullPath(path);
+    if (!recoverAtomicBackupLocked(full, kOperation)) {
+        unlock();
+        return false;
+    }
+    errno = 0;
+    FILE *file = fopen(full.c_str(), "rb");
+    if (!file) {
+        const int error_code = current_errno_or_io();
+        recordFailure(kOperation, "open", error_code, classifyErrno(error_code), false);
+        unlock();
+        return false;
+    }
+    errno = 0;
+    bool ok = fseek(file, static_cast<long>(offset), SEEK_SET) == 0;
+    int error_code = ok ? 0 : current_errno_or_io();
+    const char *stage = ok ? "" : "seek";
+    if (ok && len != 0) {
+        out_len = fread(out, 1, len, file);
+        if (ferror(file) != 0) {
+            ok = false;
+            error_code = current_errno_or_io();
+            stage = "read";
+        }
+    }
+    if (fclose(file) != 0 && ok) {
+        ok = false;
+        error_code = current_errno_or_io();
+        stage = "close";
+    }
+    if (ok) {
+        recordSuccess(kOperation, false);
+    } else {
+        out_len = 0;
+        recordFailure(kOperation, stage, error_code, classifyErrno(error_code), false);
+    }
+    unlock();
+    return ok;
+}
+
+bool SdCardManager::truncateAtomic(const char *path, size_t keep_len) {
+    constexpr const char *kOperation = "truncate";
+    if (!path) {
+        recordFailure(kOperation, "validate", EINVAL, DailyStorageFailureKind::Invalid, true);
+        return false;
+    }
+    if (!lock()) {
+        recordFailure(kOperation, "lock", EBUSY, DailyStorageFailureKind::Busy, false);
+        return false;
+    }
+    const String final_path = fullPath(path);
+    const String tmp_path = final_path + ".tmp";
+    if (!recoverAtomicBackupLocked(final_path, kOperation)) {
+        unlock();
+        return false;
+    }
+    errno = 0;
+    FILE *source = fopen(final_path.c_str(), "rb");
+    if (!source) {
+        const int error_code = current_errno_or_io();
+        recordFailure(kOperation, "open_source", error_code, classifyErrno(error_code), true);
+        unlock();
+        return false;
+    }
+    struct stat source_stat = {};
+    errno = 0;
+    if (fstat(fileno(source), &source_stat) != 0) {
+        const int error_code = current_errno_or_io();
+        fclose(source);
+        recordFailure(kOperation, "stat_source", error_code, classifyErrno(error_code), true);
+        unlock();
+        return false;
+    }
+    if (keep_len > static_cast<size_t>(source_stat.st_size)) {
+        // A caller error, not a card fault: nothing was written.
+        fclose(source);
+        recordFailure(kOperation, "validate_length", EINVAL, DailyStorageFailureKind::Invalid, false);
+        unlock();
+        return false;
+    }
+    errno = 0;
+    FILE *target = fopen(tmp_path.c_str(), "wb");
+    if (!target) {
+        const int error_code = current_errno_or_io();
+        fclose(source);
+        recordFailure(kOperation, "open_temp", error_code, classifyErrno(error_code), true);
+        unlock();
+        return false;
+    }
+    bool ok = true;
+    int error_code = 0;
+    const char *stage = "";
+    char buffer[kCopyBufferSize];
+    size_t remaining = keep_len;
+    while (ok && remaining > 0) {
+        const size_t want = remaining < sizeof(buffer) ? remaining : sizeof(buffer);
+        errno = 0;
+        const size_t got = fread(buffer, 1, want, source);
+        if (got != want) {
+            ok = false;
+            error_code = ferror(source) != 0 ? current_errno_or_io() : EIO;
+            stage = "copy_read";
+            break;
+        }
+        errno = 0;
+        if (fwrite(buffer, 1, got, target) != got) {
+            ok = false;
+            error_code = current_errno_or_io();
+            stage = "copy_write";
+            break;
+        }
+        remaining -= got;
+    }
+    if (ok && fflush(target) != 0) {
+        ok = false;
+        error_code = current_errno_or_io();
+        stage = "flush_temp";
+    }
+    if (ok && sync_file(target) != 0) {
+        ok = false;
+        error_code = current_errno_or_io();
+        stage = "sync_temp";
+    }
+    if (fclose(target) != 0 && ok) {
+        ok = false;
+        error_code = current_errno_or_io();
+        stage = "close_temp";
+    }
+    if (fclose(source) != 0 && ok) {
+        ok = false;
+        error_code = current_errno_or_io();
+        stage = "close_source";
+    }
+    if (ok) {
+        ok = replaceWithTempLocked(final_path, tmp_path, kOperation);
+    } else {
+        recordFailure(kOperation, stage, error_code, classifyErrno(error_code), true);
+    }
+    if (!ok) {
+        errno = 0;
+        remove(tmp_path.c_str());
+        unlock();
+        return false;
+    }
+    updateSpaceInfoLocked();
+    recordSuccess(kOperation, true);
+    unlock();
+    return true;
 }
 
 bool SdCardManager::writeBinaryAtomic(const char *path, const void *data, size_t len) {

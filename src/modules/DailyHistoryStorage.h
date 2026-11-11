@@ -55,7 +55,14 @@ public:
     virtual bool removeDailyCsvRowsOnOrAfterAtomic(const char *path,
                                                     const char *cutoff_iso_day) = 0;
     virtual bool readBinary(const char *path, void *out, size_t len, size_t &out_len) const = 0;
+    // Reads up to `len` bytes starting at `offset`; `out_len` < `len` only at end of file.
+    virtual bool readRange(const char *path, size_t offset, void *out, size_t len,
+                           size_t &out_len) const = 0;
     virtual bool writeBinaryAtomic(const char *path, const void *data, size_t len) = 0;
+    // Atomically replaces the file with its first `keep_len` bytes (no more
+    // than its size), streaming through a temporary file like the other
+    // atomic writes, so a power cut leaves either the old or the new file.
+    virtual bool truncateAtomic(const char *path, size_t keep_len) = 0;
     virtual bool removeFile(const char *path) = 0;
     // Calls `fn` for each entry of the directory `path`, in no particular order.
     virtual DirListResult listDir(const char *path, DirEntryFn fn, void *context) const = 0;

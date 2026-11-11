@@ -99,3 +99,26 @@ the POSIX `opendir`/`readdir`/`rmdir` calls the ESP-IDF FAT VFS already provides
 Host tests run SdCardManager against a real temporary directory standing in for the card
 (`SdCardManager::setTestMountRoot`, host tests only): `test/test_sd_storage_files`. The
 DailyExtremaHistory fake storage implements both operations from its in-memory files.
+
+## Files, torn-tail repair and the shared reader
+
+`src/modules/LongHistoryFiles.{h,cpp}`:
+
+- `quarterFilePath` builds `/aura/history/15min/YYYY/MM/YYYY-MM-DD.csv` from a UTC day key.
+- `findNewestQuarterFile` walks the year, month and day directories (A5 listing) newest
+  first and ignores anything that is not a well-formed day file in the matching directory.
+- `repairTail` removes the bytes after the last `\n`, which is what a power cut during an
+  append leaves. A file that never completed its header is replaced by the header. The
+  file is rewritten only when something is removed, through
+  `DailyHistoryStorage::truncateAtomic`, which streams the kept prefix through a temporary
+  file and the same atomic replace the other SD writes use, so it never holds the file in
+  RAM. Each repair logs one line naming the file and the bytes removed; it is not shown as
+  a user error. It runs at boot on the newest file of each kind, before anything appends.
+- `readQuarterFile` is the one reader of 15-minute files. It checks the header, then
+  delivers every row that decodes; a bad line in the middle (or an unterminated last line)
+  is skipped and logged with its line number and reason, and counted in `ReadStats`.
+  `DailyHistoryStorage::readRange` reads the file in 4 KiB pieces.
+
+Host tests: `test/test_long_history_files` (real SdCardManager on a temporary directory:
+torn row, torn header, untouched clean file, mid-file skip logged, unterminated last line,
+foreign header, newest-file search, range read and atomic truncate).
