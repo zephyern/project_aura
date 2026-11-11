@@ -74,6 +74,6 @@ private:
     HistoryBucket::Builder builder_;
     char file_path_[LongHistoryFiles::kPathCapacity] = {};
     uint32_t file_last_start_ = 0;
-    uint32_t closed_start_ = 0;
+    uint32_t floor_ = 0; // end of the last bucket closed (written or empty)
     Status status_{};
 };
