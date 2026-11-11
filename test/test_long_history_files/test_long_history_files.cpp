@@ -56,7 +56,7 @@ int warningsContaining(const char *text) {
 struct Collected {
     std::vector<uint32_t> starts;
     size_t stop_after = 0;
-    static bool add(const QuarterHourRow::Row &r, void *ctx) {
+    static bool add(const QuarterHourRow::Row &r, size_t, void *ctx) {
         auto &c = *static_cast<Collected *>(ctx);
         c.starts.push_back(r.start_epoch);
         return c.stop_after == 0 || c.starts.size() < c.stop_after;

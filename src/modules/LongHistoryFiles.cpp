@@ -194,6 +194,7 @@ ReadResult readQuarterFile(const DailyHistoryStorage &storage, const char *path,
         return ReadResult::Failed;
     }
     size_t line_len = 0;
+    size_t line_start = 0;
     bool overlong = false;
     uint32_t line_no = 0;
     bool header_done = false;
@@ -221,7 +222,7 @@ ReadResult readQuarterFile(const DailyHistoryStorage &storage, const char *path,
             return true;
         }
         ++stats.rows;
-        if (!fn(row, context)) stop = true;
+        if (!fn(row, line_start, context)) stop = true;
         return !stop;
     };
 
@@ -237,6 +238,7 @@ ReadResult readQuarterFile(const DailyHistoryStorage &storage, const char *path,
             if (ch == '\n') {
                 if (!finish_line(true)) return stop ? ReadResult::Read : ReadResult::BadHeader;
                 line_len = 0;
+                line_start = offset + i + 1;
                 overlong = false;
                 continue;
             }

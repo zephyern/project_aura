@@ -50,8 +50,9 @@ struct ReadStats {
     uint32_t rows = 0;
     uint32_t skipped = 0; // bad lines skipped and logged
 };
+// `line_offset` is the byte offset of the row's first character in the file.
 // Return false to stop reading.
-using RowFn = bool (*)(const QuarterHourRow::Row &row, void *context);
+using RowFn = bool (*)(const QuarterHourRow::Row &row, size_t line_offset, void *context);
 // The shared reader of 15-minute files: checks the header, then delivers each
 // decodable row in file order. A bad line in the middle (or an unterminated
 // last line) is skipped and logged with its line number and reason.
