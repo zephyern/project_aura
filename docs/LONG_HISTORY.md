@@ -81,3 +81,21 @@ history files are named by `utcDayKey`; charts that group by the viewer's day us
 
 Host tests: `test/test_local_date` (local vs UTC day, both US daylight-saving days,
 untrusted time, formatting), plus the existing DailyExtremaHistory and TimeManager tests.
+
+## Directory listing and empty-directory removal
+
+`DailyHistoryStorage` gains `listDir` and `removeEmptyDir`, implemented by SdCardManager with
+the POSIX `opendir`/`readdir`/`rmdir` calls the ESP-IDF FAT VFS already provides (it fills
+`d_type`; a filesystem that leaves it unknown falls back to `stat`). Results are typed:
+
+- `listDir` → `Listed`, `Absent` (no such directory, not a card fault) or `Failed`
+  (`lastFailureKind()` says why). The callback runs under the storage lock and must not
+  call back into storage; it returns `false` to stop early.
+- `removeEmptyDir` → `Removed`, `Absent`, `NotEmpty` or `Failed`. FatFs reports `rmdir` of a
+  non-empty directory as `FR_DENIED`, which the VFS maps to `EACCES`, the same error as a
+  read-only card, so SdCardManager first checks for entries and returns `NotEmpty` without
+  marking the card unhealthy. The card root is never removed.
+
+Host tests run SdCardManager against a real temporary directory standing in for the card
+(`SdCardManager::setTestMountRoot`, host tests only): `test/test_sd_storage_files`. The
+DailyExtremaHistory fake storage implements both operations from its in-memory files.
