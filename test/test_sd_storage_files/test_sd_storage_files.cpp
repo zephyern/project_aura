@@ -6,69 +6,27 @@
 
 #include <unity.h>
 
-#include <dirent.h>
-#include <errno.h>
-#include <stdio.h>
-#include <stdlib.h>
 #include <string>
-#include <sys/stat.h>
-#include <unistd.h>
 #include <map>
 
 #include "ArduinoMock.h"
 #include "core/WakePowerGuard.h"
 #include "modules/SdCardManager.h"
+#include "SdTempRoot.h"
 
 namespace {
 
-std::string g_root;
-
-bool mountOk(void *) { return true; }
-bool unmountOk(void *) { return true; }
-
-void removeTree(const std::string &path) {
-    DIR *dir = opendir(path.c_str());
-    if (dir) {
-        while (const dirent *e = readdir(dir)) {
-            const std::string name = e->d_name;
-            if (name == "." || name == "..") continue;
-            const std::string child = path + "/" + name;
-            struct stat st = {};
-            if (stat(child.c_str(), &st) == 0 && S_ISDIR(st.st_mode)) {
-                removeTree(child);
-            } else {
-                unlink(child.c_str());
-            }
-        }
-        closedir(dir);
-    }
-    rmdir(path.c_str());
-}
+SdTempRoot *g_root = nullptr;
 
 void writeHostFile(const std::string &relative, const std::string &content) {
-    const std::string full = g_root + relative;
-    for (size_t i = g_root.size() + 1; i < full.size(); ++i) {
-        if (full[i] == '/') mkdir(full.substr(0, i).c_str(), 0775);
-    }
-    FILE *f = fopen(full.c_str(), "wb");
-    TEST_ASSERT_NOT_NULL(f);
-    fwrite(content.data(), 1, content.size(), f);
-    fclose(f);
+    g_root->write(relative, content);
 }
 
-bool hostExists(const std::string &relative) {
-    struct stat st = {};
-    return stat((g_root + relative).c_str(), &st) == 0;
-}
+bool hostExists(const std::string &relative) { return g_root->exists(relative); }
 
 struct Mounted {
     SdCardManager sd;
-    Mounted() {
-        sd.setTestMountRoot(g_root.c_str());
-        sd.setTestBackend({mountOk, unmountOk, nullptr, nullptr, nullptr});
-        TEST_ASSERT_TRUE(sd.begin(nullptr));
-        TEST_ASSERT_TRUE(sd.isReady());
-    }
+    Mounted() { g_root->mount(sd); }
 };
 
 struct Listing {
@@ -86,13 +44,12 @@ struct Listing {
 void setUp() {
     setMillis(0);
     WakePowerGuard::resetForTest();
-    char tmpl[] = "/tmp/aura_sd_test_XXXXXX";
-    TEST_ASSERT_NOT_NULL(mkdtemp(tmpl));
-    g_root = tmpl;
+    g_root = new SdTempRoot();
 }
 
 void tearDown() {
-    removeTree(g_root);
+    delete g_root;
+    g_root = nullptr;
     WakePowerGuard::resetForTest();
 }
 
@@ -178,7 +135,7 @@ void test_remove_empty_dir_refuses_the_card_root_and_bad_arguments() {
 
 void test_unmounted_card_refuses_listing_and_removal() {
     SdCardManager sd;
-    sd.setTestMountRoot(g_root.c_str());
+    sd.setTestMountRoot(g_root->root().c_str());
     Listing l;
     TEST_ASSERT_EQUAL(static_cast<int>(DirListResult::Failed),
                       static_cast<int>(sd.listDir("/", &Listing::add, &l)));
