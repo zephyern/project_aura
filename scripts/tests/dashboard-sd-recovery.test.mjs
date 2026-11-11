@@ -160,11 +160,12 @@ test('history settings say when a restart is needed', () => {
 test('chart settings save sends every field and shows what the device returned', async () => {
   const h=harness();
   const payload=h.context.chartSettingsPayload(id => id === 'chartsBandEnabled');
-  assert.deepEqual(JSON.parse(JSON.stringify(payload)), {band_enabled:true, month_enabled:false});
+  assert.deepEqual(JSON.parse(JSON.stringify(payload)), {band_enabled:true, month_enabled:false, year_enabled:false});
   h.get('chartsBandEnabled').checked=true;
-  h.context.renderChartSettings({success:true, band_enabled:false, month_enabled:true});
+  h.context.renderChartSettings({success:true, band_enabled:false, month_enabled:true, year_enabled:true});
   assert.equal(h.get('chartsBandEnabled').checked,false);
   assert.equal(h.get('chartsMonthEnabled').checked,true);
+  assert.equal(h.get('chartsYearEnabled').checked,true);
 });
 
 test('chart settings save posts to the charts endpoint and reports a refusal', async () => {

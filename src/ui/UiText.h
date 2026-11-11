@@ -345,6 +345,7 @@ inline const char *DacOutputUnknown() { return UiStrings::text(UiStrings::TextId
 inline const char *DacConnectNetwork() { return UiStrings::text(UiStrings::TextId::DacConnectNetwork); }
 inline const char *LabelAboutTextFormat() { return UiStrings::text(UiStrings::TextId::LabelAboutTextFormat); }
 inline const char *LabelChartRangeMonth() { return UiStrings::text(UiStrings::TextId::LabelChartRangeMonth); }
+inline const char *LabelChartRangeYear() { return UiStrings::text(UiStrings::TextId::LabelChartRangeYear); }
 inline const char *LabelChartPeriodTitle() { return UiStrings::text(UiStrings::TextId::LabelChartPeriodTitle); }
 inline const char *MsgChartHistoryOff() { return UiStrings::text(UiStrings::TextId::MsgChartHistoryOff); }
 inline const char *MsgChartHistoryUnreadable() { return UiStrings::text(UiStrings::TextId::MsgChartHistoryUnreadable); }
@@ -355,6 +356,13 @@ static_assert(static_cast<int>(UiStrings::TextId::LabelMonthName12) ==
               "month names must be consecutive");
 inline const char *MonthName(int month) {
     return UiStrings::text(static_cast<UiStrings::TextId>(static_cast<int>(UiStrings::TextId::LabelMonthName1) + month - 1));
+}
+// Short month name for chart time labels; month: 1..12.
+static_assert(static_cast<int>(UiStrings::TextId::LabelMonthShort12) ==
+                  static_cast<int>(UiStrings::TextId::LabelMonthShort1) + 11,
+              "short month names must be consecutive");
+inline const char *MonthShortName(int month) {
+    return UiStrings::text(static_cast<UiStrings::TextId>(static_cast<int>(UiStrings::TextId::LabelMonthShort1) + month - 1));
 }
 
 } // namespace UiText
