@@ -13,6 +13,7 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "core/LocalDate.h"
 #include "core/Logger.h"
 #include "drivers/DfrOptionalGasSensor.h"
 
@@ -131,17 +132,6 @@ uint8_t csv_metric_decimals(const DailyExtremaHistory::MetricDef &def,
         return 2;
     }
     return def.decimals;
-}
-
-bool localtime_safe(const time_t *epoch, tm *out) {
-    if (!epoch || !out) {
-        return false;
-    }
-#if defined(_WIN32)
-    return localtime_s(out, epoch) == 0;
-#else
-    return localtime_r(epoch, out) != nullptr;
-#endif
 }
 
 } // namespace
@@ -302,50 +292,6 @@ uint32_t DailyExtremaHistory::currentSampleCountLocked() const {
 uint32_t DailyExtremaHistory::currentSampleCount() const {
     ScopedLock guard(*this);
     return guard.locked() ? currentSampleCountLocked() : 0;
-}
-
-bool DailyExtremaHistory::localDateFromEpoch(time_t epoch, uint32_t &day_key) {
-    if (epoch <= Config::TIME_VALID_EPOCH) {
-        return false;
-    }
-    tm local_tm = {};
-    if (!localtime_safe(&epoch, &local_tm)) {
-        return false;
-    }
-    const int year = local_tm.tm_year + 1900;
-    const int month = local_tm.tm_mon + 1;
-    const int day = local_tm.tm_mday;
-    if (year < 2020 || month < 1 || month > 12 || day < 1 || day > 31) {
-        return false;
-    }
-    day_key = static_cast<uint32_t>(year * 10000 + month * 100 + day);
-    return true;
-}
-
-void DailyExtremaHistory::formatDay(uint32_t day_key, char *out, size_t len) {
-    if (!out || len == 0) {
-        return;
-    }
-    const uint32_t year = day_key / 10000U;
-    const uint32_t month = (day_key / 100U) % 100U;
-    const uint32_t day = day_key % 100U;
-    snprintf(out, len, "%04u-%02u-%02u",
-             static_cast<unsigned>(year),
-             static_cast<unsigned>(month),
-             static_cast<unsigned>(day));
-}
-
-void DailyExtremaHistory::formatTime(uint32_t epoch, char *out, size_t len) {
-    if (!out || len == 0) {
-        return;
-    }
-    time_t raw = static_cast<time_t>(epoch);
-    tm local_tm = {};
-    if (!localtime_safe(&raw, &local_tm)) {
-        out[0] = '\0';
-        return;
-    }
-    snprintf(out, len, "%02d:%02d:%02d", local_tm.tm_hour, local_tm.tm_min, local_tm.tm_sec);
 }
 
 bool DailyExtremaHistory::validPersistedState(const PersistedState &state) {
@@ -824,7 +770,7 @@ bool DailyExtremaHistory::shouldHoldBackwardDay(time_t current_epoch,
         return false;
     }
     uint32_t last_update_day_key = 0;
-    return localDateFromEpoch(last_update_epoch_, last_update_day_key) &&
+    return LocalDate::localDayKey(last_update_epoch_, last_update_day_key) &&
            last_update_day_key == stored_day_key;
 }
 
@@ -886,7 +832,7 @@ bool DailyExtremaHistory::cleanupFutureCsvIfNeeded(uint32_t now_ms, bool force) 
     }
 
     char cutoff_day[16] = {};
-    formatDay(csv_cleanup_day_key_, cutoff_day, sizeof(cutoff_day));
+    LocalDate::formatDayKey(csv_cleanup_day_key_, cutoff_day, sizeof(cutoff_day));
     last_csv_cleanup_attempt_ms_ = now_ms;
     if (!storage_->removeDailyCsvRowsOnOrAfterAtomic(kDailyCsvPath, cutoff_day)) {
         csv_cleanup_retry_pending_ = true;
@@ -989,7 +935,7 @@ void DailyExtremaHistory::update(const SensorData &data,
     }
     uint32_t day_key = 0;
     const time_t now_epoch = now_epoch_fn_();
-    if (!localDateFromEpoch(now_epoch, day_key)) {
+    if (!LocalDate::localDayKey(now_epoch, day_key)) {
         return;
     }
     if (!ensureDay(day_key, now_epoch)) {
@@ -1146,7 +1092,7 @@ bool DailyExtremaHistory::appendCsvRowsForState(const PersistedState &state,
     char day_buf[16] = {};
     char min_time[16] = {};
     char max_time[16] = {};
-    formatDay(state.day_key, day_buf, sizeof(day_buf));
+    LocalDate::formatDayKey(state.day_key, day_buf, sizeof(day_buf));
 
     for (uint8_t i = 0; i < ChartsHistory::kMetricCount; ++i) {
         const MetricState &metric = state.metrics[i];
@@ -1154,8 +1100,8 @@ bool DailyExtremaHistory::appendCsvRowsForState(const PersistedState &state,
             continue;
         }
         const MetricDef &def = metricDef(i);
-        formatTime(metric.min_epoch, min_time, sizeof(min_time));
-        formatTime(metric.max_epoch, max_time, sizeof(max_time));
+        LocalDate::formatLocalTime(metric.min_epoch, min_time, sizeof(min_time));
+        LocalDate::formatLocalTime(metric.max_epoch, max_time, sizeof(max_time));
 
         rows += day_buf;
         rows += ',';
@@ -1332,7 +1278,7 @@ bool DailyExtremaHistory::flushOldestPendingDay(uint32_t now_ms, bool force) {
     }
 
     char day_prefix[16] = {};
-    formatDay(pending.day_key, day_prefix, sizeof(day_prefix));
+    LocalDate::formatDayKey(pending.day_key, day_prefix, sizeof(day_prefix));
     const size_t prefix_len = strlen(day_prefix);
     if (prefix_len + 1 < sizeof(day_prefix)) {
         day_prefix[prefix_len] = ',';
