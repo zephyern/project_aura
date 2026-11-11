@@ -21,6 +21,36 @@ bool takeLast(const QuarterHourRow::Row &row, size_t, void *context) {
     return true;
 }
 
+struct LastSpan {
+    uint32_t start = 0;
+    uint32_t end = 0;
+};
+
+bool takeLastSpan(const QuarterHourRow::SpanRow &row, size_t, void *context) {
+    LastSpan &last = *static_cast<LastSpan *>(context);
+    last.start = row.start_epoch;
+    last.end = row.end_epoch;
+    return true;
+}
+
+LastResult lastFromRead(LongHistoryFiles::ReadResult read, const LongHistoryFiles::ReadStats &stats,
+                        uint32_t last, uint32_t &last_epoch) {
+    switch (read) {
+        case LongHistoryFiles::ReadResult::Read:
+            if (stats.rows == 0) return LastResult::NoRecords;
+            last_epoch = last;
+            return LastResult::Found;
+        case LongHistoryFiles::ReadResult::Absent:
+        case LongHistoryFiles::ReadResult::Empty:
+            return LastResult::NoRecords;
+        case LongHistoryFiles::ReadResult::BadHeader:
+            return LastResult::Unsupported;
+        case LongHistoryFiles::ReadResult::Failed:
+            return LastResult::Failed;
+    }
+    return LastResult::Failed;
+}
+
 struct FirstFuture {
     uint32_t now = 0;
     bool found = false;
@@ -131,19 +161,20 @@ LastResult lastQuarterEpoch(const DailyHistoryStorage &storage, const char *path
                             uint32_t &last_epoch) {
     uint32_t last = 0;
     LongHistoryFiles::ReadStats stats;
-    switch (LongHistoryFiles::readQuarterFile(storage, path, &takeLast, &last, stats)) {
-        case LongHistoryFiles::ReadResult::Read:
-            if (stats.rows == 0) return LastResult::NoRecords;
-            last_epoch = last;
-            return LastResult::Found;
-        case LongHistoryFiles::ReadResult::Absent:
-        case LongHistoryFiles::ReadResult::Empty:
-            return LastResult::NoRecords;
-        case LongHistoryFiles::ReadResult::BadHeader:
-        case LongHistoryFiles::ReadResult::Failed:
-            return LastResult::Failed;
-    }
-    return LastResult::Failed;
+    const LongHistoryFiles::ReadResult read =
+        LongHistoryFiles::readQuarterFile(storage, path, &takeLast, &last, stats);
+    return lastFromRead(read, stats, last, last_epoch);
+}
+
+LastResult lastSpan(const DailyHistoryStorage &storage, const char *path, uint32_t &last_start,
+                    uint32_t &last_end) {
+    LastSpan last;
+    LongHistoryFiles::ReadStats stats;
+    const LongHistoryFiles::ReadResult read =
+        LongHistoryFiles::readSpanFile(storage, path, &takeLastSpan, &last, stats);
+    const LastResult result = lastFromRead(read, stats, last.start, last_start);
+    if (result == LastResult::Found) last_end = last.end;
+    return result;
 }
 
 ClearResult clearFutureQuarterRows(DailyHistoryStorage &storage, time_t now, ClearStats &stats) {

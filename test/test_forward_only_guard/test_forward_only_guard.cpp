@@ -109,7 +109,7 @@ void test_last_epoch_ignores_a_bad_last_line_and_reports_no_records() {
                       static_cast<int>(lastQuarterEpoch(sd, kToday, last)));
     TEST_ASSERT_EQUAL_UINT32(kDay + 2 * kQ, last);
     g_root->write(kToday, "date,metric\n" + row(kDay));
-    TEST_ASSERT_EQUAL(static_cast<int>(LastResult::Failed),
+    TEST_ASSERT_EQUAL(static_cast<int>(LastResult::Unsupported),
                       static_cast<int>(lastQuarterEpoch(sd, kToday, last)));
 }
 

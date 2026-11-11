@@ -54,6 +54,15 @@ public:
     void onInterval(const ChartsHistory::CompletedInterval &interval);
 
     Status status() const { return status_; }
+    // True once the card is prepared (repair done, last row known).
+    bool prepared() const { return enabled_ && prepared_; }
+
+    // Each summary level (hourly, daily, weekly) receives every row after it
+    // is written to the card. False if the pair is already registered or all
+    // slots are taken.
+    static constexpr size_t kMaxRowListeners = 3;
+    using RowListener = void (*)(const QuarterHourRow::Row &row, void *context);
+    bool addRowListener(RowListener listener, void *context);
 
 private:
     static void intervalThunk(const ChartsHistory::CompletedInterval &interval, void *context);
@@ -69,4 +78,9 @@ private:
     uint32_t closed_start_ = 0; // start of the last quarter closed this session
     QuarterHourRow::Row quarter_{};
     Status status_{};
+    struct RowListenerSlot {
+        RowListener fn = nullptr;
+        void *context = nullptr;
+    };
+    RowListenerSlot row_listeners_[kMaxRowListeners]{};
 };
