@@ -14,6 +14,7 @@
 #include <sys/time.h>
 #include <esp_sntp.h>
 
+#include "core/LocalDate.h"
 #include "core/Logger.h"
 #ifdef UNIT_TEST
 #include "TimeMock.h"
@@ -58,22 +59,6 @@ bool setTimezoneEnv(const char *tz) {
     return _putenv_s("TZ", tz ? tz : "") == 0;
 #else
     return setenv("TZ", tz ? tz : "", 1) == 0;
-#endif
-}
-
-bool gmtimeInto(const time_t &epoch, tm &out) {
-#ifdef _WIN32
-    return gmtime_s(&out, &epoch) == 0;
-#else
-    return gmtime_r(&epoch, &out) != nullptr;
-#endif
-}
-
-bool localtimeInto(const time_t &epoch, tm &out) {
-#ifdef _WIN32
-    return localtime_s(&out, &epoch) == 0;
-#else
-    return localtime_r(&epoch, &out) != nullptr;
 #endif
 }
 
@@ -572,7 +557,7 @@ void TimeManager::prepareDeferredRtcFinish(PollResult &result) {
         isSystemTimeTrusted() &&
         isSystemTimeValid()) {
         const time_t epoch = nowEpoch();
-        if (gmtimeInto(epoch, rtc_deferred_tm_)) {
+        if (LocalDate::gmtimeInto(epoch, rtc_deferred_tm_)) {
             rtc_pending_write_ = true;
             rtc_pending_write_epoch_ = epoch;
             rtc_pending_write_due_ms_ = 0;
@@ -1061,7 +1046,7 @@ bool TimeManager::setLocalTime(int year, int month, int day, int hour, int minut
         return false;
     }
     tm normalized = {};
-    if (!localtimeInto(epoch, normalized) ||
+    if (!LocalDate::localtimeInto(epoch, normalized) ||
         normalized.tm_year != year - 1900 ||
         normalized.tm_mon != month - 1 ||
         normalized.tm_mday != day ||
@@ -1145,7 +1130,7 @@ int TimeManager::currentUtcOffsetMinutes() const {
         return getTimezone().offset_min;
     }
     tm utc_tm = {};
-    if (!gmtimeInto(now, utc_tm)) {
+    if (!LocalDate::gmtimeInto(now, utc_tm)) {
         return getTimezone().offset_min;
     }
     utc_tm.tm_isdst = -1;
@@ -1199,7 +1184,7 @@ bool TimeManager::getLocalTime(tm &out) {
     if (now <= Config::TIME_VALID_EPOCH) {
         return false;
     }
-    return localtimeInto(now, out);
+    return LocalDate::localtimeInto(now, out);
 }
 
 bool TimeManager::syncInputsFromSystem(int &hour, int &minute, int &day, int &month, int &year) {
@@ -1290,7 +1275,7 @@ bool TimeManager::rtcWriteFromEpoch(time_t epoch,
         return false;
     }
     tm utc_tm = {};
-    if (!gmtimeInto(epoch, utc_tm)) {
+    if (!LocalDate::gmtimeInto(epoch, utc_tm)) {
         return false;
     }
     if (!rtcWriteTime(utc_tm, access)) {
@@ -1376,7 +1361,7 @@ TimeManager::PollResult TimeManager::ntpPoll(uint32_t now_ms,
             time_t epoch = nowEpoch();
             if (epoch > Config::TIME_VALID_EPOCH) {
                 tm local_tm = {};
-                if (!localtimeInto(epoch, local_tm)) {
+                if (!LocalDate::localtimeInto(epoch, local_tm)) {
                     return result;
                 }
                 char buf[32] = {};

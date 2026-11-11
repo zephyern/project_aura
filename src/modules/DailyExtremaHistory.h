@@ -152,9 +152,6 @@ private:
                   "Daily snapshot v2 disk ABI changed");
 
     static time_t nowEpochRaw();
-    static bool localDateFromEpoch(time_t epoch, uint32_t &day_key);
-    static void formatDay(uint32_t day_key, char *out, size_t len);
-    static void formatTime(uint32_t epoch, char *out, size_t len);
     static bool validPersistedState(const PersistedState &state);
     static void migratePersistedState(PersistedState &state);
     static uint32_t snapshotCrc32(const PersistedSnapshot &snapshot);
