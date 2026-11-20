@@ -739,7 +739,19 @@ const char kDashboardPageTemplateAp[] PROGMEM = R"HTML_DASH_AP(
                tabindex="-1">Export daily CSV</a>
             <button class="btn btn-danger" type="button" id="sdClearCurrentBtn">Delete current day</button>
             <button class="btn btn-danger" type="button" id="sdClearHistoryBtn">Clear history</button>
+            <button class="btn btn-danger" type="button" id="sdClearFutureBtn" hidden>Clear future-dated history</button>
           </div>
+          <div class="sd-actions" id="historySettings">
+            <label><input type="checkbox" id="historyLogEnabled"> Long-term history log</label>
+            <label>When the card is full
+              <select id="historyFullAction">
+                <option value="auto_delete">Delete the oldest 15-minute detail</option>
+                <option value="stop_recording">Stop recording</option>
+              </select>
+            </label>
+            <button class="btn" type="button" id="historySettingsSaveBtn">Save history settings</button>
+          </div>
+          <div class="sd-note" id="historySettingsNote" role="status" aria-live="polite"></div>
           <div class="sd-note" id="sd-note" role="status" aria-live="polite">Open System to load SD history status.</div>
         </div>
       </div>
@@ -1975,10 +1987,12 @@ function renderSdHistoryStatus(payload) {
   const exportReady = ready && !sdServiceBusy && dailyCsv && dailyCsv.exists === true && Number(dailyCsv.size_bytes || 0) > 0;
   setSdCurrentExportEnabled(currentReady);
   setSdExportEnabled(exportReady);
-  ['sdClearCurrentBtn','sdClearHistoryBtn'].forEach(id => {
+  ['sdClearCurrentBtn','sdClearHistoryBtn','sdClearFutureBtn'].forEach(id => {
     const btn = document.getElementById(id);
     if (btn) btn.disabled = !ready || sdServiceBusy || sdReconnectBusy;
   });
+  const clearFuture = document.getElementById('sdClearFutureBtn');
+  if (clearFuture) clearFuture.hidden = !(payload && payload.long_history);
 
   if (recoveryBusy) {
     const retry = Math.ceil(Number(sd.recovery_retry_ms || 0) / 1000);
@@ -2068,7 +2082,7 @@ async function refreshSdHistory(options) {
 // State
 // ─────────────────────────────────────────────
 function setSdServiceButtonsDisabled(disabled) {
-  ['sdClearCurrentBtn','sdClearHistoryBtn','sdRefreshBtn','sdReconnectBtn'].forEach(id => {
+  ['sdClearCurrentBtn','sdClearHistoryBtn','sdClearFutureBtn','sdRefreshBtn','sdReconnectBtn'].forEach(id => {
     const btn = document.getElementById(id);
     if (btn) btn.disabled = !!disabled;
   });
@@ -2086,6 +2100,45 @@ function sdClearHistoryConfirmText(payload) {
 function sdClearCurrentConfirmText(payload) {
   if (!(payload && payload.long_history)) return 'Delete current day history snapshot?';
   return "Delete today's history only? Earlier days are kept.";
+}
+
+const SD_CLEAR_FUTURE_CONFIRM = 'Delete all history dated in the future? Use this only if the clock ' +
+  'was once set ahead. Earlier history is kept.';
+
+// history.log_enabled starts or stops the log only at boot.
+function historySettingsNote(settings) {
+  if (!settings || settings.restart_required !== true) return '';
+  return settings.log_enabled ? 'Restart to start the long-term history log.' :
+    'Restart to stop the long-term history log.';
+}
+function renderHistorySettings(settings) {
+  const enabled = document.getElementById('historyLogEnabled');
+  const action = document.getElementById('historyFullAction');
+  const note = document.getElementById('historySettingsNote');
+  if (!enabled || !action || !note || !settings) return;
+  enabled.checked = settings.log_enabled === true;
+  action.value = settings.full_action;
+  note.textContent = historySettingsNote(settings);
+}
+async function loadHistorySettings() {
+  const response = await fetch('/api/history/settings', { cache: 'no-store' });
+  const settings = await response.json();
+  if (!response.ok || settings.success !== true) throw new Error(settings.error || 'History settings unavailable.');
+  renderHistorySettings(settings);
+}
+async function saveHistorySettings() {
+  const note = document.getElementById('historySettingsNote');
+  try {
+    const result = await postJson('/api/history/settings', {
+      log_enabled: document.getElementById('historyLogEnabled').checked,
+      full_action: document.getElementById('historyFullAction').value,
+    });
+    if (!result || result.success !== true) throw new Error(result && result.error || 'Save failed.');
+    renderHistorySettings(result);
+    if (note && !note.textContent) note.textContent = 'History settings saved.';
+  } catch (error) {
+    if (note) note.textContent = error && error.message || 'Save failed.';
+  }
 }
 
 async function runSdServiceAction(url, confirmText, progressText, successText) {
@@ -3629,6 +3682,18 @@ document.getElementById('sdClearCurrentBtn').addEventListener('click', () => {
                      sdClearCurrentConfirmText(sdHistoryStatusCache),
                      'Deleting current day snapshot...',
                      'Current day history deleted.').catch(() => {});
+});
+document.getElementById('sdClearFutureBtn').addEventListener('click', () => {
+  runSdServiceAction('/api/history/future/clear', SD_CLEAR_FUTURE_CONFIRM,
+                     'Deleting future-dated history...',
+                     'Future-dated history deleted.').catch(() => {});
+});
+document.getElementById('historySettingsSaveBtn').addEventListener('click', () => {
+  saveHistorySettings().catch(() => {});
+});
+loadHistorySettings().catch(error => {
+  const note = document.getElementById('historySettingsNote');
+  if (note) note.textContent = error && error.message || 'History settings unavailable.';
 });
 document.getElementById('sdClearHistoryBtn').addEventListener('click', () => {
   runSdServiceAction('/api/history/clear',

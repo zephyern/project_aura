@@ -2,6 +2,7 @@
 #include <Arduino.h>
 #include <ctype.h>
 #include "AuraI2c.h"
+#include "modules/StorageHealth.h"
 #include <string.h>
 #include <time.h>
 
@@ -791,5 +792,7 @@ namespace Config {
 
         // Long-term SD history (docs/LONG_HISTORY.md). Off unless turned on.
         bool history_log_enabled = false;
+        // What the long-term history does when the card is full.
+        StorageHealth::FullAction history_full_action = StorageHealth::kDefaultFullAction;
     };
 }

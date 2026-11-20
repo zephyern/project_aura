@@ -16,6 +16,8 @@
 #include "modules/LongHistory.h"
 #include "modules/LongHistoryFiles.h"
 #include "modules/SdCardManager.h"
+#include "modules/StorageHealth.h"
+#include "modules/StorageManager.h"
 #include "web/WebResponseUtils.h"
 
 namespace {
@@ -613,6 +615,95 @@ void handleClearCurrentDay(WebHandlerContext &context, bool ota_busy, const char
     ArduinoJson::JsonArray files = root["files"].to<ArduinoJson::JsonArray>();
     add_remove_result(files, "/aura/history/current_day.*.bin", state_existed, state_ok);
     send_json(*server, state_ok ? 200 : 500, doc);
+}
+
+void handleClearFuture(WebHandlerContext &context, bool ota_busy, const char *ota_busy_json) {
+    WebRequest *server = nullptr;
+    if (!require_sd_ready(context, ota_busy, ota_busy_json, server)) {
+        return;
+    }
+    if (!long_history_on(context)) {
+        send_error(*server, 409, "The long-term history log is off");
+        return;
+    }
+    LongHistory::OpResults results;
+    send_op_results(*server, context.long_history->clearFuture(time(nullptr), results), results);
+}
+
+namespace {
+
+void fill_history_settings(ArduinoJson::JsonObject root, const WebHandlerContext &context) {
+    const Config::StoredConfig &cfg = context.storage->config();
+    root["log_enabled"] = cfg.history_log_enabled;
+    root["full_action"] = StorageHealth::fullActionName(cfg.history_full_action);
+    // The log is started or stopped only at boot.
+    root["log_running"] = long_history_on(context);
+    root["restart_required"] = cfg.history_log_enabled != long_history_on(context);
+}
+
+} // namespace
+
+void handleSettingsGet(WebHandlerContext &context) {
+    if (!context.server) return;
+    if (!context.storage) {
+        send_error(*context.server, 503, "Storage unavailable");
+        return;
+    }
+    ArduinoJson::JsonDocument doc;
+    ArduinoJson::JsonObject root = doc.to<ArduinoJson::JsonObject>();
+    root["success"] = true;
+    fill_history_settings(root, context);
+    send_json(*context.server, 200, doc);
+}
+
+void handleSettingsPost(WebHandlerContext &context, bool ota_busy, const char *ota_busy_json) {
+    WebRequest *server = context.server;
+    if (!server) return;
+    if (ota_busy) {
+        WebResponseUtils::sendNoStoreHeaders(*server);
+        server->send(503, "application/json", ota_busy_json);
+        return;
+    }
+    if (!context.storage) {
+        send_error(*server, 503, "Storage unavailable");
+        return;
+    }
+    ArduinoJson::JsonDocument body;
+    if (deserializeJson(body, server->arg("plain")) != ArduinoJson::DeserializationError::Ok ||
+        !body.is<ArduinoJson::JsonObjectConst>()) {
+        send_error(*server, 400, "Body must be a JSON object");
+        return;
+    }
+    // Both fields are required and nothing else is accepted.
+    ArduinoJson::JsonObjectConst obj = body.as<ArduinoJson::JsonObjectConst>();
+    for (ArduinoJson::JsonPairConst kv : obj) {
+        const char *key = kv.key().c_str();
+        if (strcmp(key, "log_enabled") != 0 && strcmp(key, "full_action") != 0) {
+            String message = String("Unknown field: ") + key + " (fields: log_enabled, full_action)";
+            send_error(*server, 400, message.c_str());
+            return;
+        }
+    }
+    if (!obj["log_enabled"].is<bool>()) {
+        send_error(*server, 400, "log_enabled must be true or false");
+        return;
+    }
+    StorageHealth::FullAction action = StorageHealth::kDefaultFullAction;
+    if (!obj["full_action"].is<const char *>() ||
+        !StorageHealth::parseFullAction(obj["full_action"].as<const char *>(), action)) {
+        send_error(*server, 400, "full_action must be auto_delete or stop_recording");
+        return;
+    }
+    if (!context.storage->saveHistorySettings(obj["log_enabled"].as<bool>(), action)) {
+        send_error(*server, 500, "Failed to save history settings");
+        return;
+    }
+    if (long_history_on(context)) context.long_history->setFullAction(action); // live
+    ArduinoJson::JsonDocument doc;
+    ArduinoJson::JsonObject root = doc.to<ArduinoJson::JsonObject>();
+    root["success"] = true;
+    fill_history_settings(root, context);
+    send_json(*server, 200, doc);
 }
 
 } // namespace WebDailyHistoryHandlers

@@ -7,6 +7,7 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <time.h>
+#include <atomic>
 #include <vector>
 
 #ifndef UNIT_TEST
@@ -19,6 +20,7 @@
 #include "modules/DailySummary.h"
 #include "modules/HourlySummary.h"
 #include "modules/QuarterHourLogger.h"
+#include "modules/StorageHealth.h"
 #include "modules/SummaryWriter.h"
 #include "modules/WeeklySummary.h"
 
@@ -38,8 +40,18 @@ public:
     bool attach(ChartsHistory &history);
     void setEnabled(bool enabled);
     bool enabled() const { return enabled_; }
-    // Call once per loop pass after ChartsHistory::update.
-    void poll(time_t now, bool time_trusted);
+    // What to do when the card is full (setting history.full_action).
+    void setFullAction(StorageHealth::FullAction action) { full_action_.store(action); }
+    // Free space on the card as last read by the SD card manager.
+    struct Space {
+        bool known = false;
+        uint64_t free_bytes = 0;
+    };
+    // Call once per loop pass after ChartsHistory::update. Also applies the
+    // card-full action and computes the storage health.
+    void poll(time_t now, bool time_trusted, const Space &space);
+    // The verdict of the last poll (any task; never blocks).
+    StorageHealth::Status health() const;
 
     // The daily CSV in the upstream daily.csv format, generated from the
     // daily records. Chunks go to `sink`; `bytes` is the total. Only records
@@ -82,6 +94,11 @@ public:
     // 15-minute rows that remain. Earlier days are untouched. Only files that
     // existed (or failed) are listed.
     OpStatus clearToday(time_t now, OpResults &results);
+    // "Clear future-dated history" (clock was once set ahead): removes every
+    // 15-minute row that starts after `now` and every summary record that
+    // ends after it, then rebuilds. NoTime unless the clock was trusted at
+    // the last poll (a wrong clock must never delete real history).
+    OpStatus clearFuture(time_t now, OpResults &results);
 
 private:
     class Lock {
@@ -96,6 +113,15 @@ private:
     };
     static void intervalThunk(const ChartsHistory::CompletedInterval &interval, void *context);
     void setWritersEnabled(bool enabled);
+    void updateLadder();
+    enum class DeleteResult : uint8_t { Deleted, NothingLeft, Failed };
+    // Card full, auto_delete: removes the oldest whole month of 15-minute
+    // files, never the current UTC month and never a summary.
+    DeleteResult deleteOldestMonth(time_t now);
+    void measureRate(time_t now);
+    StorageHealth::Inputs healthInputs(const Space &space) const;
+    void enforceSpace(time_t now, const Space &space);
+    void publishHealth(const StorageHealth::Status &status);
     OpStatus beginOp();
     void endOp();
 
@@ -111,6 +137,16 @@ private:
     bool attached_ = false;
     bool enabled_ = false;
     bool op_running_ = false;
+    std::atomic<StorageHealth::FullAction> full_action_{StorageHealth::kDefaultFullAction};
+    std::atomic<bool> time_trusted_{false}; // as given to the last poll
+    uint32_t rate_day_ = 0;       // UTC day key the rate was last measured on
+    uint32_t bytes_per_day_ = 0;  // 0: not measured (no complete day yet)
+    bool nothing_left_ = false;   // auto_delete found nothing it may delete
+    std::atomic<bool> stopped_{false}; // recording stopped: intervals are dropped
+    uint32_t rows_at_delete_ = UINT32_MAX; // rows written at the last deletion
+    uint64_t free_at_delete_ = UINT64_MAX; // free-space reading at the last deletion
+    DailyStorageFailureKind delete_failure_ = DailyStorageFailureKind::None; // last deletion failed
+    std::atomic<uint64_t> health_{0};
 #ifndef UNIT_TEST
     mutable SemaphoreHandle_t mutex_ = nullptr;
 #endif

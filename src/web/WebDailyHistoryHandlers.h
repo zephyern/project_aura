@@ -16,5 +16,10 @@ void handleCsv(WebHandlerContext &context, bool ota_busy, const char *ota_busy_j
 void handleCurrentDayCsv(WebHandlerContext &context, bool ota_busy, const char *ota_busy_json);
 void handleClearHistory(WebHandlerContext &context, bool ota_busy, const char *ota_busy_json);
 void handleClearCurrentDay(WebHandlerContext &context, bool ota_busy, const char *ota_busy_json);
+// Long-term history only (409 when the log is off).
+void handleClearFuture(WebHandlerContext &context, bool ota_busy, const char *ota_busy_json);
+// history.log_enabled (applied at the next boot) and history.full_action (applied at once).
+void handleSettingsGet(WebHandlerContext &context);
+void handleSettingsPost(WebHandlerContext &context, bool ota_busy, const char *ota_busy_json);
 
 } // namespace WebDailyHistoryHandlers

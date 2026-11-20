@@ -17,7 +17,13 @@ constexpr uint32_t kLowSpaceDays = 30;
 // Days measured for the rate (the most recent complete UTC days).
 constexpr size_t kRateDays = 7;
 
+// Setting `history.full_action` (docs/LONG_HISTORY.md, "Card full").
 enum class FullAction : uint8_t { AutoDelete, StopRecording };
+constexpr FullAction kDefaultFullAction = FullAction::AutoDelete;
+// "auto_delete" / "stop_recording".
+const char *fullActionName(FullAction action);
+// False for any other text.
+bool parseFullAction(const char *text, FullAction &out);
 
 enum class Kind : uint8_t {
     Off,              // log off: nothing to show
