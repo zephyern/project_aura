@@ -67,3 +67,17 @@ so a reader can show the right unit.
   refuses a bad row with a typed result and leaves the output untouched.
 
 Host tests: `test/test_quarter_hour_row`.
+
+## Calendar helpers
+
+`src/core/LocalDate.{h,cpp}` is the one place that turns epochs into dates: thread-safe
+`localtimeInto`/`gmtimeInto`, `localDayKey`/`utcDayKey` (YYYYMMDD, only for trusted time
+after `Config::TIME_VALID_EPOCH` and years from 2020), `formatDayKey` ("YYYY-MM-DD") and
+`formatLocalTime` ("HH:MM:SS"). DailyExtremaHistory and TimeManager used to carry their
+own private copies of these; both now call LocalDate, with unchanged behaviour. Long-term
+history files are named by `utcDayKey`; charts that group by the viewer's day use
+`localDayKey`, which follows the device's time zone through daylight-saving changes
+(23- and 25-hour days).
+
+Host tests: `test/test_local_date` (local vs UTC day, both US daylight-saving days,
+untrusted time, formatting), plus the existing DailyExtremaHistory and TimeManager tests.
