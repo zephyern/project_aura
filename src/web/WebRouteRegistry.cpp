@@ -48,6 +48,9 @@ void registerRoutes(WebServerBackend &server) {
     server.onPost("/api/history/settings", history_settings_post_handle);
     server.onGet("/api/charts/settings", charts_settings_get_handle);
     server.onPost("/api/charts/settings", charts_settings_post_handle);
+    server.onGet("/api/weather/settings", weather_settings_get_handle);
+    server.onPost("/api/weather/settings", weather_settings_post_handle);
+    server.onPost("/api/weather/geocode", weather_geocode_handle);
     server.onGet("/api/state", state_handle_data);
     server.onGet("/api/events", events_handle_data);
     server.onGet("/api/diag", diag_handle_data);
