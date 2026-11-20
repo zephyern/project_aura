@@ -33,10 +33,21 @@ enum class HistoryCombineResult : uint8_t {
     CountOverflow,  // `into` is unchanged.
 };
 
+enum class HistoryMergeResult : uint8_t {
+    Combined,
+    Replaced,      // sources differed: `into` now holds `add` alone
+    CountOverflow, // `into` is unchanged
+};
+
 namespace HistoryAggregates {
 
 // Folds `add` into `into`. An empty side contributes nothing. When both sides
 // reach the same low (or high), the earlier time is kept.
 HistoryCombineResult combine(HistoryAggregate &into, const HistoryAggregate &add);
+
+// The long-term history rule for data arriving in time order: combine, but
+// when the source changed (another optional gas sensor), the newer data
+// replaces the older instead of being mixed with it.
+HistoryMergeResult mergeNewer(HistoryAggregate &into, const HistoryAggregate &add);
 
 } // namespace HistoryAggregates

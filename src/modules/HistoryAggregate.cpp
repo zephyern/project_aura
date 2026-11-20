@@ -32,4 +32,17 @@ HistoryCombineResult combine(HistoryAggregate &into, const HistoryAggregate &add
     return HistoryCombineResult::Combined;
 }
 
+HistoryMergeResult mergeNewer(HistoryAggregate &into, const HistoryAggregate &add) {
+    switch (combine(into, add)) {
+    case HistoryCombineResult::Combined:
+        return HistoryMergeResult::Combined;
+    case HistoryCombineResult::SourceMismatch:
+        into = add;
+        return HistoryMergeResult::Replaced;
+    case HistoryCombineResult::CountOverflow:
+        return HistoryMergeResult::CountOverflow;
+    }
+    return HistoryMergeResult::CountOverflow; // unreachable: every kind handled above
+}
+
 } // namespace HistoryAggregates
