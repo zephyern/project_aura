@@ -231,6 +231,8 @@ uint16_t UiController::graph_points_for_range(TempGraphRange range) const {
             return period_line_points(LongRange::Month);
         case TEMP_GRAPH_RANGE_YEAR:
             return period_line_points(LongRange::Year);
+        case TEMP_GRAPH_RANGE_LIFETIME:
+            return period_line_points(LongRange::Lifetime);
         case TEMP_GRAPH_RANGE_3H:
         default:
             return Config::CHART_HISTORY_3H_STEPS;

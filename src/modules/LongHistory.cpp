@@ -450,7 +450,7 @@ bool LongHistory::lastWriteOk() const {
     return q == QuarterHourLogger::State::Recording && daily_.status().state == SummaryWriter::State::Recording;
 }
 
-bool LongHistory::firstDayKey(uint32_t &day_key) const {
+bool LongHistory::firstDailyRecord(QuarterHourRow::SpanRow &row) const {
     std::vector<uint32_t> years;
     First first;
     if (dailyYears(storage_, years)) {
@@ -468,7 +468,20 @@ bool LongHistory::firstDayKey(uint32_t &day_key) const {
         if (!lock.locked() || !daily_.hasOpenBucket() || daily_.openRecord().empty()) return false;
         first.row = daily_.openRecord();
     }
-    return recordDayKey(first.row, day_key);
+    row = first.row;
+    return true;
+}
+
+bool LongHistory::firstDayKey(uint32_t &day_key) const {
+    QuarterHourRow::SpanRow row;
+    return firstDailyRecord(row) && recordDayKey(row, day_key);
+}
+
+bool LongHistory::firstRecordStart(uint32_t &start) const {
+    QuarterHourRow::SpanRow row;
+    if (!firstDailyRecord(row)) return false;
+    start = row.start_epoch;
+    return true;
 }
 
 bool LongHistory::firstDay(char *out, size_t len) const {
@@ -487,13 +500,17 @@ struct ChartPass {
     void *context;
     uint32_t start;
     uint32_t end;
+    uint32_t last_end = 0; // end of the last record delivered
 };
 bool inChartRange(const ChartPass &pass, const QuarterHourRow::SpanRow &row) {
     return row.start_epoch >= pass.start && row.start_epoch < pass.end;
 }
 bool chartRecord(const QuarterHourRow::SpanRow &row, size_t, void *context) {
-    const ChartPass &pass = *static_cast<const ChartPass *>(context);
-    if (inChartRange(pass, row)) pass.fn(row, pass.context);
+    ChartPass &pass = *static_cast<ChartPass *>(context);
+    if (inChartRange(pass, row)) {
+        pass.fn(row, pass.context);
+        pass.last_end = std::max(pass.last_end, row.end_epoch);
+    }
     return true;
 }
 
@@ -501,16 +518,21 @@ bool chartRecord(const QuarterHourRow::SpanRow &row, size_t, void *context) {
 
 LongHistory::ChartRead LongHistory::hourlyChart(uint32_t start, uint32_t end, ChartRecordFn fn,
                                                 void *context) const {
-    return chartRead(ChartLevel::Hourly, start, end, fn, context);
+    return chartRead(ChartLevel::Hourly, 0, start, end, fn, context);
 }
 
 LongHistory::ChartRead LongHistory::dailyChart(uint32_t start, uint32_t end, ChartRecordFn fn,
                                                void *context) const {
-    return chartRead(ChartLevel::Daily, start, end, fn, context);
+    return chartRead(ChartLevel::Daily, 0, start, end, fn, context);
 }
 
-LongHistory::ChartRead LongHistory::chartRead(ChartLevel level, uint32_t start, uint32_t end, ChartRecordFn fn,
-                                              void *context) const {
+LongHistory::ChartRead LongHistory::weeklyChart(uint32_t weeks, uint32_t start, uint32_t end, ChartRecordFn fn,
+                                                void *context) const {
+    return chartRead(ChartLevel::Weekly, weeks, start, end, fn, context);
+}
+
+LongHistory::ChartRead LongHistory::chartRead(ChartLevel level, uint32_t weeks, uint32_t start, uint32_t end,
+                                              ChartRecordFn fn, void *context) const {
     if (!enabled_) return ChartRead::Off;
     if (!fn || end <= start) {
         LOGE(kTag, "chart read with no callback or an empty range");
@@ -527,6 +549,29 @@ LongHistory::ChartRead LongHistory::chartRead(ChartLevel level, uint32_t start, 
             LOGE(kTag, "hourly chart read failed (%u bad lines)", static_cast<unsigned>(stats.skipped));
             return ChartRead::Failed;
         }
+    } else if (level == ChartLevel::Weekly) {
+        char path[LongHistoryFiles::kPathCapacity];
+        char week_path[LongHistoryFiles::kPathCapacity];
+        if (!LongHistoryFiles::weeklyFilePath(weeks, path) || !LongHistoryFiles::weeklyFilePath(1, week_path)) {
+            LOGE(kTag, "weekly chart for an unknown ladder level w%u", static_cast<unsigned>(weeks));
+            return ChartRead::Failed;
+        }
+        const char *paths[] = {path, week_path};
+        const size_t path_count = weeks > 1 ? 2 : 1;
+        for (size_t i = 0; i < path_count; ++i) {
+            // The one-week pass only adds what the coarser level does not have yet.
+            if (i > 0) pass.start = std::max(pass.start, pass.last_end);
+            LongHistoryFiles::ReadStats stats;
+            const LongHistoryFiles::ReadResult read =
+                LongHistoryFiles::readSpanFile(storage_, paths[i], &chartRecord, &pass, stats);
+            if (read == LongHistoryFiles::ReadResult::BadHeader || read == LongHistoryFiles::ReadResult::Failed) {
+                LOGE(kTag, "weekly chart read of %s failed (%u bad lines)", paths[i],
+                     static_cast<unsigned>(stats.skipped));
+                return ChartRead::Failed;
+            }
+        }
+        pass.start = std::max(pass.start, pass.last_end);
+        open_writer = &weekly_;
     } else {
         uint32_t first_day = 0;
         uint32_t last_day = 0;

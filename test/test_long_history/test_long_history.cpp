@@ -329,6 +329,39 @@ void test_daily_chart_reads_the_local_days_and_the_day_in_progress() {
     TEST_ASSERT_EQUAL_UINT32(kNov9 + kLocalMidnight, g_chart[0].start_epoch);
 }
 
+void test_weekly_chart_reaches_the_present_at_every_level() {
+    writeQuarters(kNov8, kNov10 + 6 * kH);
+    Rig rig;
+    rig.history.poll(static_cast<time_t>(kNov10 + 6 * kH), true, LongHistory::Space{});
+    constexpr uint32_t kWeek = 7 * 24 * kH;
+    constexpr uint32_t kWeekOfNov2 = kNov9 - kWeek; // ladder weeks start on Monday 00:00 UTC
+    constexpr uint32_t kFarFuture = kNov10 + 100 * kWeek;
+    // w1: the closed week of Nov 2 (only Nov 8 has data) and the open week of Nov 9.
+    g_chart.clear();
+    TEST_ASSERT_EQUAL(static_cast<int>(LongHistory::ChartRead::Read),
+                      static_cast<int>(rig.history.weeklyChart(1, WeeklySummary::kAnchorEpoch, kFarFuture,
+                                                               &collectChart, nullptr)));
+    TEST_ASSERT_EQUAL_UINT32(2, g_chart.size());
+    TEST_ASSERT_EQUAL_UINT32(kWeekOfNov2, g_chart[0].start_epoch);
+    TEST_ASSERT_EQUAL_UINT32(24 * 12, g_chart[0].metrics[TEMP].count);
+    TEST_ASSERT_EQUAL_UINT32(kNov9, g_chart[1].start_epoch);
+    // w4 has no file yet: the one-week records stand in for it, each once.
+    g_chart.clear();
+    TEST_ASSERT_EQUAL(static_cast<int>(LongHistory::ChartRead::Read),
+                      static_cast<int>(rig.history.weeklyChart(4, WeeklySummary::kAnchorEpoch, kFarFuture,
+                                                               &collectChart, nullptr)));
+    TEST_ASSERT_EQUAL_UINT32(2, g_chart.size());
+    TEST_ASSERT_EQUAL_UINT32(kWeekOfNov2, g_chart[0].start_epoch);
+    TEST_ASSERT_EQUAL_UINT32(kNov9, g_chart[1].start_epoch);
+    // Not a ladder level.
+    TEST_ASSERT_EQUAL(static_cast<int>(LongHistory::ChartRead::Failed),
+                      static_cast<int>(rig.history.weeklyChart(3, WeeklySummary::kAnchorEpoch, kFarFuture,
+                                                               &collectChart, nullptr)));
+    uint32_t first = 0;
+    TEST_ASSERT_TRUE(rig.history.firstRecordStart(first));
+    TEST_ASSERT_EQUAL_UINT32(kNov8 - 24 * kH + 5 * kH, first); // Nov 7, 00:00 EST
+}
+
 void test_chart_reads_refused_when_off() {
     Rig rig;
     rig.history.setEnabled(false);
@@ -336,6 +369,8 @@ void test_chart_reads_refused_when_off() {
                       static_cast<int>(rig.history.hourlyChart(kNov9, kNov10, &collectChart, nullptr)));
     TEST_ASSERT_EQUAL(static_cast<int>(LongHistory::ChartRead::Off),
                       static_cast<int>(rig.history.dailyChart(kNov9, kNov10, &collectChart, nullptr)));
+    TEST_ASSERT_EQUAL(static_cast<int>(LongHistory::ChartRead::Off),
+                      static_cast<int>(rig.history.weeklyChart(1, kNov9, kNov10, &collectChart, nullptr)));
 }
 
 void test_operations_refused_when_off() {
@@ -433,6 +468,7 @@ int main(int, char **) {
     RUN_TEST(test_operations_refused_when_off);
     RUN_TEST(test_hourly_chart_reads_the_range_and_the_hour_in_progress);
     RUN_TEST(test_daily_chart_reads_the_local_days_and_the_day_in_progress);
+    RUN_TEST(test_weekly_chart_reaches_the_present_at_every_level);
     RUN_TEST(test_chart_reads_refused_when_off);
     RUN_TEST(test_card_full_auto_delete_removes_the_oldest_month_only);
     RUN_TEST(test_card_full_stop_recording_deletes_nothing);

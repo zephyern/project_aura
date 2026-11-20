@@ -403,3 +403,4 @@
     "ott",
     "nov",
     "dic",
+    "Tutto",

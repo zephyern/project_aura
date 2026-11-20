@@ -670,6 +670,8 @@ void UiEventBinder::applyCheckedStatesForAvailableObjects(UiController &owner, i
                     owner.*group.range == UiController::TEMP_GRAPH_RANGE_MONTH);
         set_checked(objects.*group.long_buttons[static_cast<size_t>(UiController::LongRange::Year)].button,
                     owner.*group.range == UiController::TEMP_GRAPH_RANGE_YEAR);
+        set_checked(objects.*group.long_buttons[static_cast<size_t>(UiController::LongRange::Lifetime)].button,
+                    owner.*group.range == UiController::TEMP_GRAPH_RANGE_LIFETIME);
     }
     set_checked(objects.btn_pressure_range_1h, owner.pressure_graph_range_ == UiController::TEMP_GRAPH_RANGE_1H);
     set_checked(objects.btn_pressure_range_3h, owner.pressure_graph_range_ == UiController::TEMP_GRAPH_RANGE_3H);
