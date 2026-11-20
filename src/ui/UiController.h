@@ -20,6 +20,8 @@
 #include "ui/ChartPlot.h"
 #include "ui/ChartPeriod.h"
 #include "ui/LongChartSeries.h"
+#include "ui/MultiChartAxis.h"
+#include "ui/MultiChartSelection.h"
 #include <vector>
 #include "web/WebUiBridge.h"
 #include <lvgl.h>
@@ -295,6 +297,17 @@ private:
         void (*select)(UiController &ui);
     };
     static const RangeGroup kRangeGroups[];
+    // The multi-sensor chart's range buttons, and the sensor charts that open it.
+    struct MultiRange {
+        lv_obj_t *objects_t::*button;
+        TempGraphRange range;
+    };
+    static const MultiRange kMultiRanges[];
+    static const size_t kMultiRangeCount;
+    static lv_obj_t *objects_t::*const kInfoCharts[];
+    struct MultiSeriesStyle;
+    static const MultiSeriesStyle kMultiSeriesStyles[];
+    static const size_t kInfoChartCount;
     static const size_t kRangeGroupCount;
     // What each long range reads and shows (UiControllerLongCharts.cpp).
     struct LongRangeSpec;
@@ -323,6 +336,35 @@ private:
     void on_long_range_event(lv_event_t *e);
     void open_period_navigator(LongRange range);
     void step_chart_period(ChartPeriod::Step step);
+    // The multi-sensor chart (UiControllerMultiChart.cpp, docs/CHARTS_HISTORY.md).
+    bool multi_chart_enabled() const;
+    static bool info_sensor_metric(InfoSensor sensor, ChartsHistory::Metric &metric);
+    const char *multi_series_name(int metric) const;
+    const char *multi_series_unit(int metric) const;
+    bool ensure_multi_selection();
+    void open_multi_chart(ChartsHistory::Metric metric);
+    void on_info_chart_long_press(lv_event_t *e);
+    void on_multi_chart_back(lv_event_t *e);
+    void on_multi_chart_range(lv_event_t *e);
+    void on_multi_chart_lines(lv_event_t *e);
+    void on_multi_chart_row(lv_event_t *e);
+    void on_multi_chart_chip(lv_event_t *e);
+    void enter_multi_chart();
+    void release_multi_chart_runtime_objects();
+    void rebuild_multi_chart_lists();
+    void sync_multi_chart_controls();
+    void update_multi_chart();
+    void draw_multi_chart();
+    struct MultiAxisFit {
+        bool valid = false;
+        MultiChartAxis::Axis axis{};
+    };
+    MultiAxisFit fit_multi_axis(MultiChartSelection::Axis axis, uint16_t points);
+    void plot_multi_axis(MultiChartSelection::Axis axis, const MultiAxisFit &fit, uint16_t points);
+    void place_multi_axis_labels(MultiChartSelection::Axis axis, const MultiAxisFit &fit);
+    lv_obj_t *add_multi_series_chip(lv_obj_t *parent, size_t index, lv_event_cb_t cb);
+    void update_multi_chart_texts();
+    void read_recent_samples(ChartsHistory::Metric metric, uint16_t points, std::vector<ChartPlot::Sample> &out) const;
     uint16_t period_line_points(LongRange range) const;
     bool period_layout(LongRange range, LongChartSeries::Layout &layout) const;
     PeriodChartStatus load_period_chart(LongRange range, int metric_id);
@@ -944,6 +986,12 @@ private:
     static void on_temp_range_24h_event_cb(lv_event_t *e);
     static void on_long_range_event_cb(lv_event_t *e);
     static void on_chart_period_prev_event_cb(lv_event_t *e);
+    static void on_info_chart_long_press_event_cb(lv_event_t *e);
+    static void on_multi_chart_back_event_cb(lv_event_t *e);
+    static void on_multi_chart_range_event_cb(lv_event_t *e);
+    static void on_multi_chart_lines_event_cb(lv_event_t *e);
+    static void on_multi_chart_row_event_cb(lv_event_t *e);
+    static void on_multi_chart_chip_event_cb(lv_event_t *e);
     static void on_chart_period_next_event_cb(lv_event_t *e);
     static void on_rh_range_1h_event_cb(lv_event_t *e);
     static void on_rh_range_3h_event_cb(lv_event_t *e);
@@ -1065,7 +1113,7 @@ private:
     bool data_dirty = true;
     bool last_web_backlight_request_pending_ = false;
     bool lvgl_ready = false;
-    static constexpr size_t kScreenSlotCount = 16; // screen ids are 1..15
+    static constexpr size_t kScreenSlotCount = 17; // screen ids are 1..16
     bool screen_events_bound_[kScreenSlotCount] = {};
     bool theme_events_bound_ = false;
     int pending_screen_id = 0;
@@ -1228,6 +1276,29 @@ private:
         std::vector<ChartPlot::Sample> band;
     };
     PeriodChartCache period_chart_;
+    // The multi-sensor chart: the selection (kept until reboot or until the
+    // fitted optional gas changes), the range, and what the last drawing showed.
+    static constexpr uint8_t kMultiAxisLabelCount = MultiChartAxis::kDivisions + 1;
+    static constexpr size_t kMultiAxisCount = MultiChartSelection::kMaxUnits;
+    MultiChartSelection::Selection multi_selection_;
+    bool multi_selection_ready_ = false;
+    const char *multi_gas_unit_ = nullptr;
+    TempGraphRange multi_range_ = TEMP_GRAPH_RANGE_3H;
+    bool multi_lines_open_ = false;
+    bool multi_third_unit_ = false; // the last pick was refused: two units are on
+    bool multi_dirty_ = true;
+    struct MultiChartDrawn {
+        bool valid = false;
+        uint32_t latest_epoch = 0;
+        uint16_t count = 0;
+        uint32_t theme = 0;
+        bool units_c = true;
+    };
+    MultiChartDrawn multi_drawn_;
+    lv_obj_t *multi_axis_labels_[kMultiAxisCount][kMultiAxisLabelCount] = {};
+    lv_obj_t *multi_time_labels_[7] = {};
+    std::vector<ChartPlot::Sample> multi_samples_;
+    std::vector<int32_t> multi_values_;
     lv_obj_t *chart_message_label_ = nullptr;
     lv_obj_t *chart_period_title_ = nullptr;
     lv_obj_t *temp_graph_label_min_ = nullptr;

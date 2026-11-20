@@ -404,3 +404,7 @@
     "Nov",
     "Dez",
     "Alles",
+    "VERGLEICH",
+    "LINIEN",
+    "Nur zwei Einheiten passen, eine pro Seite. Entferne zuerst die Linien einer Einheit.",
+    "Tippe auf LINIEN, um auszuwählen, was verglichen wird.",
