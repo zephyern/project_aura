@@ -339,4 +339,10 @@ bool hourlyFilePath(uint32_t utc_year, uint32_t utc_month, char (&out)[kPathCapa
     return true;
 }
 
+bool dailyFilePath(uint32_t local_year, char (&out)[kPathCapacity]) {
+    if (local_year < kFirstYear || local_year > kLastYear) return false;
+    snprintf(out, sizeof(out), "%s/%04u.csv", kDailyRoot, static_cast<unsigned>(local_year));
+    return true;
+}
+
 } // namespace LongHistoryFiles

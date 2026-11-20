@@ -16,6 +16,8 @@ namespace LongHistoryFiles {
 constexpr const char *kQuarterRoot = "/aura/history/15min";
 // /aura/history/hourly/YYYY-MM.csv, UTC hours, named by UTC year and month.
 constexpr const char *kHourlyRoot = "/aura/history/hourly";
+// /aura/history/days/YYYY.csv, one record per local calendar day, named by local year.
+constexpr const char *kDailyRoot = "/aura/history/days";
 constexpr size_t kPathCapacity = 48;
 // A row is about 1 KB with every metric present; the header is a little longer.
 constexpr size_t kMaxLineBytes = 2048;
@@ -79,5 +81,7 @@ ScanResult scanQuarterRows(const DailyHistoryStorage &storage, uint32_t from, ui
 
 // False outside 2020-2099 or for a month outside 1-12.
 bool hourlyFilePath(uint32_t utc_year, uint32_t utc_month, char (&out)[kPathCapacity]);
+// False outside 2020-2099.
+bool dailyFilePath(uint32_t local_year, char (&out)[kPathCapacity]);
 
 } // namespace LongHistoryFiles

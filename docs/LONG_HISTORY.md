@@ -223,3 +223,26 @@ exclusive `end_utc` after the start, and low/high seconds counted from the recor
 Host tests: `test/test_hourly_summary` (span layout round trip, live hour from logged
 quarters, boot rebuild equals live and continues the open hour, damaged file rebuilt, close
 without a last quarter, range across two UTC month files).
+
+## Daily summaries
+
+`src/modules/DailySummary.{h,cpp}` defines the daily level: one record per **local**
+calendar day in `/aura/history/days/YYYY.csv`, named by the local year, written by the
+shared `SummaryWriter`. Each record stores its own UTC `[start, end)`. Every time zone the
+device offers is a whole number of quarter hours from UTC, so a local day is a whole number
+of 15-minute rows: 96 normally, 92 or 100 on a daylight-saving change day.
+
+- The day containing a quarter is found with the time zone in effect now (`localtime`,
+  `mktime`), so DST days come out 23 or 25 hours long without special cases.
+- Time-zone change: finished days are never rewritten. If the zone changes while a day is
+  open, that day keeps its start and ends at the next local midnight of the new zone. If a
+  change makes the next day start before the last written one ended, the next day starts
+  where the last one ended, so records never overlap.
+- `readYear(year)` returns that local year's records in time order.
+
+`SummaryWriter` applies these two rules to every level; for the UTC levels (hourly,
+weekly) the grouping never changes, so they never trigger.
+
+Host tests: `test/test_daily_summary` (local day bounds and file, 92/100-quarter DST days,
+DST day as one exact record, zone change inside a day and between days, boot rebuild equal
+to the derivation).
