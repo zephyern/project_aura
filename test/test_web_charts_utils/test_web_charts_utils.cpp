@@ -55,11 +55,24 @@ void test_web_charts_utils_chart_group_metrics_falls_back_to_core() {
     TEST_ASSERT_EQUAL_STRING("pressure", metrics[3].key);
 }
 
+void test_web_charts_utils_chart_metric_at_walks_every_group_in_order() {
+    const WebChartsUtils::ChartMetricSpec *spec = nullptr;
+    TEST_ASSERT_EQUAL_UINT32(14, static_cast<uint32_t>(WebChartsUtils::chartMetricCount()));
+    TEST_ASSERT_TRUE(WebChartsUtils::chartMetricAt(0, spec));
+    TEST_ASSERT_EQUAL_STRING("co2", spec->key);
+    TEST_ASSERT_TRUE(WebChartsUtils::chartMetricAt(4, spec));
+    TEST_ASSERT_EQUAL_STRING("co", spec->key);
+    TEST_ASSERT_TRUE(WebChartsUtils::chartMetricAt(13, spec));
+    TEST_ASSERT_EQUAL_STRING("pm10", spec->key);
+    TEST_ASSERT_FALSE(WebChartsUtils::chartMetricAt(14, spec));
+}
+
 int main(int, char **) {
     UNITY_BEGIN();
     RUN_TEST(test_web_charts_utils_chart_window_points_normalizes_known_windows);
     RUN_TEST(test_web_charts_utils_chart_window_points_falls_back_to_3h);
     RUN_TEST(test_web_charts_utils_chart_group_metrics_returns_expected_series);
     RUN_TEST(test_web_charts_utils_chart_group_metrics_falls_back_to_core);
+    RUN_TEST(test_web_charts_utils_chart_metric_at_walks_every_group_in_order);
     return UNITY_END();
 }

@@ -233,3 +233,26 @@ level 1 and at a level with no file yet, an unknown level, `firstRecordStart`; r
 when off).
 
 Not verified on hardware: the look of the All button and the year-month labels.
+
+## Multi-sensor selection model
+
+The rules for choosing what the multi-sensor chart shows, as a pure class with no
+screen yet (the screen is the next change): `MultiChartSelection::Selection` in
+`src/ui/MultiChartSelection.{h,cpp}`.
+
+- **Grouped by unit.** The series and their units come from the dashboard's chart table
+  (`WebChartsUtils`, now walkable with `chartMetricCount` / `chartMetricAt`), so the device
+  and the dashboard never disagree. The optional gas takes the unit of the fitted sensor
+  (`DfrOptionalGasSensor::unitForType`: ppm, ppb for ozone, %Vol for oxygen) instead of the
+  table's fixed ppm, so ozone groups with HCHO (ppb). Groups are listed in the order their
+  unit first appears.
+- **Two units at most**, one per Y axis. Adding a series of a third unit is refused with
+  `Toggle::ThirdUnit` and changes nothing, so the screen can say so plainly. A unit keeps its
+  axis while any of its series is selected, so the other unit never jumps sides.
+- **Hide and show keep the data.** A hidden series stays selected and keeps its unit's axis;
+  only removing it frees the axis.
+- **Outdoor temperature (layer E)** will be one more series with the unit `C`, so it shares
+  the indoor temperature's axis. `kMaxSeries` is the one place that grows.
+
+Host tests: `test/test_multi_chart_selection` (7 cases), `test/test_web_charts_utils` (+1).
+
