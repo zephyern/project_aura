@@ -122,3 +122,22 @@ DailyExtremaHistory fake storage implements both operations from its in-memory f
 Host tests: `test/test_long_history_files` (real SdCardManager on a temporary directory:
 torn row, torn header, untouched clean file, mid-file skip logged, unterminated last line,
 foreign header, newest-file search, range read and atomic truncate).
+
+## Forward-only rule
+
+`src/modules/ForwardOnlyGuard.{h,cpp}` is the one rule every long-term history appender
+follows: a record is written only if it starts after the file's last record
+(`accept(last, new)` → `Accept`, or `ClockBehind` with the last epoch). Equal and earlier
+starts are refused, so a clock that moved back pauses recording, with status `ClockBehind`
+for the alert bar, until it passes the last record; a clock that moved forward just leaves
+a gap. At boot, after the torn-tail repair, `lastQuarterEpoch` reads each file's last good
+row. A file whose header is not supported is reported `Failed` and never appended to.
+Upstream's own short hold for DailyExtremaHistory keeps working unchanged.
+
+`clearFutureQuarterRows(now)` is the logic behind the "clear future-dated history" action
+(its Settings button arrives with the history settings): for a clock once set far ahead,
+it cuts today's file at its first row starting after `now`, removes every later day file,
+and removes the month and year directories left empty. It refuses to run without trusted
+time and logs one line with the counts.
+
+Host tests: `test/test_forward_only_guard`.
