@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# SPDX-FileCopyrightText: 2026 Daniel Abramowitz
+# SPDX-FileCopyrightText: 2026 Daniel
 # SPDX-License-Identifier: GPL-3.0-or-later
 
 # Linux counterpart of scripts/run_tests.ps1: runs the native Unity suites
