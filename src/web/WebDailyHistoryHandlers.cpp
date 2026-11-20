@@ -11,7 +11,10 @@
 #include <stdio.h>
 
 #include "core/Logger.h"
+#include "core/LocalDate.h"
 #include "modules/DailyExtremaHistory.h"
+#include "modules/LongHistory.h"
+#include "modules/LongHistoryFiles.h"
 #include "modules/SdCardManager.h"
 #include "web/WebResponseUtils.h"
 
@@ -150,6 +153,143 @@ void add_remove_result(ArduinoJson::JsonArray results,
     item["ok"] = ok;
 }
 
+// --- Long-term history (history.log_enabled on; docs/LONG_HISTORY.md) ---
+
+constexpr const char *kLongDailyPath = LongHistoryFiles::kDailyRoot;
+
+bool long_history_on(const WebHandlerContext &context) { return context.long_history != nullptr; }
+
+bool long_units_c(const WebHandlerContext &context) {
+    return context.daily_extrema ? context.daily_extrema->preferredUnitsC() : true;
+}
+
+// Fails the request when the log is on but the history could not start.
+bool require_long_history_running(WebHandlerContext &context, WebRequest &server) {
+    if (context.long_history->enabled()) return true;
+    send_error(server, 503, "Long-term history is not running; see the device log");
+    return false;
+}
+
+void fill_long_status(ArduinoJson::JsonObject root, WebHandlerContext &context) {
+    LongHistory &history = *context.long_history;
+    const bool units_c = long_units_c(context);
+    ArduinoJson::JsonObject daily = root["daily"].to<ArduinoJson::JsonObject>();
+    daily["csv_path"] = kLongDailyPath;
+    uint32_t day_key = 0;
+    uint32_t samples = 0;
+    const bool has_day = history.currentDay(day_key, samples);
+    daily["current_day"] = has_day ? day_key : 0;
+    daily["current_sample_count"] = has_day ? samples : 0;
+    daily["last_write_ok"] = history.lastWriteOk();
+    // Stored in C and converted at download with the current setting.
+    daily["current_day_units_c"] = units_c;
+    daily["preferred_units_c"] = units_c;
+    // The long-term writers have no retry queue: a failed write is reported
+    // at once (last_write_ok, sd status), so these are truly zero.
+    daily["pending_day_count"] = 0;
+    daily["oldest_pending_day"] = 0;
+    daily["dropped_pending_days"] = 0;
+    daily["pending_retry_ms"] = 0;
+
+    ArduinoJson::JsonObject long_history = root["long_history"].to<ArduinoJson::JsonObject>();
+    char first_day[16] = {};
+    if (history.firstDay(first_day, sizeof(first_day))) long_history["first_day"] = first_day;
+
+    if (!context.sd_card || !context.sd_card->isReady()) return;
+    ArduinoJson::JsonObject files = root["files"].to<ArduinoJson::JsonObject>();
+    ArduinoJson::JsonObject csv = files["daily_csv"].to<ArduinoJson::JsonObject>();
+    csv["path"] = kLongDailyPath;
+    size_t bytes = 0;
+    uint32_t last_end = 0;
+    const LongHistory::CsvResult r = history.dailyCsv(units_c, UINT32_MAX, nullptr, nullptr, bytes, last_end);
+    csv["exists"] = r == LongHistory::CsvResult::Ready;
+    csv["size_bytes"] = r == LongHistory::CsvResult::Ready ? bytes : 0;
+    if (r == LongHistory::CsvResult::Failed) csv["error"] = "read failed";
+    uint32_t utc_day = 0;
+    char today_path[LongHistoryFiles::kPathCapacity] = {};
+    if (LocalDate::utcDayKey(time(nullptr), utc_day) && LongHistoryFiles::quarterFilePath(utc_day, today_path)) {
+        fill_file_status(files["current_day_state"].to<ArduinoJson::JsonObject>(), *context.sd_card, today_path);
+    }
+}
+
+struct StreamSink {
+    WebRequest *server;
+    int last_error = 0;
+};
+bool stream_text(const char *text, size_t len, void *context) {
+    StreamSink &sink = *static_cast<StreamSink *>(context);
+    size_t sent = 0;
+    while (sent < len) {
+        if (!sink.server->waitUntilWritable(250, sink.last_error)) return false;
+        const int32_t written = sink.server->writeStreamChunk(reinterpret_cast<const uint8_t *>(text) + sent,
+                                                              len - sent, sink.last_error);
+        if (written <= 0) return false;
+        sent += static_cast<size_t>(written);
+    }
+    return sink.server->clientConnected();
+}
+
+void handle_long_csv(WebHandlerContext &context, WebRequest &server) {
+    if (!require_long_history_running(context, server)) return;
+    const bool units_c = long_units_c(context);
+    size_t bytes = 0;
+    uint32_t last_end = 0;
+    switch (context.long_history->dailyCsv(units_c, UINT32_MAX, nullptr, nullptr, bytes, last_end)) {
+        case LongHistory::CsvResult::Failed:
+            send_error(server, 500, "Failed to read long-term daily history");
+            return;
+        case LongHistory::CsvResult::NoRecords:
+            send_error(server, 404, "Daily history CSV is not available yet");
+            return;
+        case LongHistory::CsvResult::Ready:
+            break;
+    }
+    WebResponseUtils::sendNoStoreHeaders(server);
+    server.sendHeader("Content-Disposition", "attachment; filename=\"aura-daily-history.csv\"");
+    if (!server.beginStreamResponse(200, "text/csv; charset=utf-8", bytes)) return;
+    StreamSink sink{&server};
+    size_t sent = 0;
+    uint32_t sent_end = 0;
+    // Same limit, so the same text as the size pass (records are append-only).
+    const LongHistory::CsvResult r =
+        context.long_history->dailyCsv(units_c, last_end, &stream_text, &sink, sent, sent_end);
+    if (r == LongHistory::CsvResult::Ready && sent == bytes) {
+        server.endStreamResponse();
+    } else {
+        Logger::log(Logger::Warn, "Web", "long-term daily CSV stream interrupted sent=%u/%u err=%d",
+                    static_cast<unsigned>(sent), static_cast<unsigned>(bytes), sink.last_error);
+    }
+}
+
+void send_op_results(WebRequest &server, LongHistory::OpStatus status, const LongHistory::OpResults &results) {
+    switch (status) {
+        case LongHistory::OpStatus::Busy:
+            send_error(server, 503, "Long-term history is busy; try again");
+            return;
+        case LongHistory::OpStatus::Off:
+            send_error(server, 503, "Long-term history is not running; see the device log");
+            return;
+        case LongHistory::OpStatus::NoTime:
+            send_error(server, 409, "Device time is not set; today is unknown");
+            return;
+        case LongHistory::OpStatus::Done:
+            break;
+    }
+    ArduinoJson::JsonDocument doc;
+    ArduinoJson::JsonObject root = doc.to<ArduinoJson::JsonObject>();
+    const bool ok = results.ok();
+    root["success"] = ok;
+    ArduinoJson::JsonArray files = root["files"].to<ArduinoJson::JsonArray>();
+    for (const LongHistory::OpResult &r : results.items) {
+        ArduinoJson::JsonObject item = files.add<ArduinoJson::JsonObject>();
+        item["path"] = r.path.c_str();
+        item["existed"] = r.existed;
+        item["removed"] = r.removed;
+        item["ok"] = r.ok;
+    }
+    send_json(server, ok ? 200 : 500, doc);
+}
+
 } // namespace
 
 namespace WebDailyHistoryHandlers {
@@ -220,6 +360,12 @@ void handleStatus(WebHandlerContext &context, bool ota_busy, const char *ota_bus
         sd["last_error_code"] = 0;
     }
 
+    if (long_history_on(context)) {
+        fill_long_status(root, context);
+        send_json(*context.server, 200, doc);
+        return;
+    }
+
     ArduinoJson::JsonObject daily = root["daily"].to<ArduinoJson::JsonObject>();
     daily["csv_path"] = DailyExtremaHistory::kDailyCsvPath;
     if (context.daily_extrema) {
@@ -285,6 +431,10 @@ void handleCsv(WebHandlerContext &context, bool ota_busy, const char *ota_busy_j
     }
     if (!context.sd_card || !context.sd_card->isReady()) {
         send_error(server, 503, "SD card is not mounted");
+        return;
+    }
+    if (long_history_on(context)) {
+        handle_long_csv(context, server);
         return;
     }
 
@@ -387,13 +537,17 @@ void handleCurrentDayCsv(WebHandlerContext &context, bool ota_busy, const char *
         server.send(503, "application/json", ota_busy_json);
         return;
     }
-    if (!context.daily_extrema) {
+    String csv;
+    if (long_history_on(context)) {
+        if (!require_long_history_running(context, server)) return;
+        if (!context.long_history->currentDayCsv(long_units_c(context), csv)) {
+            send_error(server, 404, "Current day history is not available yet");
+            return;
+        }
+    } else if (!context.daily_extrema) {
         send_error(server, 503, "Daily history is not available");
         return;
-    }
-
-    String csv;
-    if (!context.daily_extrema->currentDayCsv(csv, true)) {
+    } else if (!context.daily_extrema->currentDayCsv(csv, true)) {
         send_error(server, 404, "Current day history is not available yet");
         return;
     }
@@ -406,6 +560,11 @@ void handleCurrentDayCsv(WebHandlerContext &context, bool ota_busy, const char *
 void handleClearHistory(WebHandlerContext &context, bool ota_busy, const char *ota_busy_json) {
     WebRequest *server = nullptr;
     if (!require_sd_ready(context, ota_busy, ota_busy_json, server)) {
+        return;
+    }
+    if (long_history_on(context)) {
+        LongHistory::OpResults results;
+        send_op_results(*server, context.long_history->clearAll(results), results);
         return;
     }
 
@@ -433,6 +592,11 @@ void handleClearHistory(WebHandlerContext &context, bool ota_busy, const char *o
 void handleClearCurrentDay(WebHandlerContext &context, bool ota_busy, const char *ota_busy_json) {
     WebRequest *server = nullptr;
     if (!require_sd_ready(context, ota_busy, ota_busy_json, server)) {
+        return;
+    }
+    if (long_history_on(context)) {
+        LongHistory::OpResults results;
+        send_op_results(*server, context.long_history->clearToday(time(nullptr), results), results);
         return;
     }
 

@@ -460,9 +460,11 @@ void AuraNetworkManager::attachSensorManager(SensorManager &sensorManager) {
     web_ctx_.sensor_manager = &sensorManager;
 }
 
-void AuraNetworkManager::attachDailyHistory(SdCardManager &sdCard, DailyExtremaHistory &dailyExtrema) {
+void AuraNetworkManager::attachDailyHistory(SdCardManager &sdCard, DailyExtremaHistory &dailyExtrema,
+                                            LongHistory *longHistory) {
     web_ctx_.sd_card = &sdCard;
     web_ctx_.daily_extrema = &dailyExtrema;
+    web_ctx_.long_history = longHistory;
 }
 
 void AuraNetworkManager::attachCommandQueue(NetworkCommandQueue &commandQueue) {
