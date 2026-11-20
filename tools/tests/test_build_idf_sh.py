@@ -23,6 +23,13 @@ exit "${FAKE_PREPARE_EXIT:-0}"
 """
 
 
+class BuildIdfShLineEndingTests(unittest.TestCase):
+    def test_linux_build_wrapper_has_lf_line_endings(self):
+        script = SCRIPT.read_bytes()
+        self.assertTrue(script.startswith(b"#!/usr/bin/env bash\n"))
+        self.assertNotIn(b"\r", script)
+
+
 @unittest.skipUnless(sys.platform == "linux" and shutil.which("bash"), "Linux build wrapper")
 class BuildIdfShTests(unittest.TestCase):
     def setUp(self):
