@@ -131,6 +131,7 @@ UiContext ui_context{
     sensorManager,
     chartsHistory,
     dailyExtremaHistory,
+    longHistory,
     timeManager,
     themeManager,
     backlightManager,
