@@ -228,7 +228,7 @@ void UiController::update_temperature_info_graph() {
                                                               static_cast<int>(ChartsHistory::METRIC_TEMPERATURE),
                                                               10.0f,
                                                               false,
-                                                              true);
+                                                              GraphValueTransform::Temperature);
     const bool has_values = stats.has_values;
     float min_temp = stats.min_value;
     float max_temp = stats.max_value;
@@ -236,12 +236,9 @@ void UiController::update_temperature_info_graph() {
 
     const float fallback = profile.fallback_value;
 
-    float scale_min = min_temp;
-    float scale_max = max_temp;
-    if (has_values) {
-        scale_min = min_temp;
-        scale_max = max_temp;
-    } else {
+    float scale_min = stats.scale_min;
+    float scale_max = stats.scale_max;
+    if (!has_values) {
         scale_min = fallback;
         scale_max = fallback;
         latest_temp = fallback;
@@ -339,8 +336,8 @@ void UiController::update_humidity_info_graph() {
     float max_h = stats.max_value;
     float latest_h = stats.latest_value;
 
-    float scale_min = has_values ? min_h : 50.0f;
-    float scale_max = has_values ? max_h : 50.0f;
+    float scale_min = has_values ? stats.scale_min : 50.0f;
+    float scale_max = has_values ? stats.scale_max : 50.0f;
     float scale_span = scale_max - scale_min;
     if (!std::isfinite(scale_span) || scale_span < 10.0f) {
         scale_span = 10.0f;

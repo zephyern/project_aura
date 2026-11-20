@@ -6,7 +6,6 @@
 
 #include "ui/UiController.h"
 
-#include <float.h>
 #include <cmath>
 #include <string.h>
 #include <time.h>
@@ -97,59 +96,22 @@ void UiController::update_pressure_info_graph() {
         return;
     }
 
-    GraphSeriesStats stats{};
-    stats.has_values = false;
-    stats.min_value = FLT_MAX;
-    stats.max_value = -FLT_MAX;
-    stats.latest_value = NAN;
-
     const float point_scale = pressure_display_uses_inhg() ? 100.0f : 10.0f;
-    const uint16_t total_count = chartsHistory.count();
-    const uint16_t available = (total_count < points) ? total_count : points;
-    const uint16_t missing_prefix = points - available;
-    const uint16_t start_offset = total_count - available;
-
-    for (uint16_t i = 0; i < points; ++i) {
-        lv_coord_t point_value = LV_CHART_POINT_NONE;
-        if (i >= missing_prefix) {
-            const uint16_t offset = start_offset + (i - missing_prefix);
-            float raw_value = 0.0f;
-            bool valid = false;
-            if (chartsHistory.metricValueFromOldest(offset,
-                                                    ChartsHistory::METRIC_PRESSURE,
-                                                    raw_value,
-                                                    valid) &&
-                valid && std::isfinite(raw_value)) {
-                const float display_value = pressure_to_display(raw_value);
-                if (std::isfinite(display_value)) {
-                    if (!stats.has_values) {
-                        stats.min_value = display_value;
-                        stats.max_value = display_value;
-                        stats.has_values = true;
-                    } else {
-                        if (display_value < stats.min_value) {
-                            stats.min_value = display_value;
-                        }
-                        if (display_value > stats.max_value) {
-                            stats.max_value = display_value;
-                        }
-                    }
-                    stats.latest_value = display_value;
-                    point_value = static_cast<lv_coord_t>(lroundf(display_value * point_scale));
-                }
-            }
-        }
-        lv_chart_set_value_by_id(objects.chart_pressure_info, series, i, point_value);
-    }
-
+    const GraphSeriesStats stats = populate_info_chart_series(objects.chart_pressure_info,
+                                                              series,
+                                                              points,
+                                                              static_cast<int>(ChartsHistory::METRIC_PRESSURE),
+                                                              point_scale,
+                                                              false,
+                                                              GraphValueTransform::Pressure);
     const bool has_values = stats.has_values;
     float min_p = stats.min_value;
     float max_p = stats.max_value;
     float latest_p = stats.latest_value;
 
     const float fallback_pressure = pressure_to_display(1013.0f);
-    float scale_min = has_values ? min_p : fallback_pressure;
-    float scale_max = has_values ? max_p : fallback_pressure;
+    float scale_min = has_values ? stats.scale_min : fallback_pressure;
+    float scale_max = has_values ? stats.scale_max : fallback_pressure;
     float scale_span = scale_max - scale_min;
     const float min_span = pressure_display_uses_inhg() ? 0.06f : 2.0f;
     if (!std::isfinite(scale_span) || scale_span < min_span) {

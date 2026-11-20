@@ -16,6 +16,9 @@
 #include "ui/UiCo2Workflow.h"
 #include "ui/UiDeferredUnload.h"
 #include "ui/StorageStatusMessage.h"
+#include "ui/ChartBand.h"
+#include "ui/ChartPlot.h"
+#include <vector>
 #include "web/WebUiBridge.h"
 #include <lvgl.h>
 #include "modules/SensorManager.h"
@@ -167,7 +170,12 @@ private:
         float min_value = 0.0f;
         float max_value = 0.0f;
         float latest_value = 0.0f;
+        // What the Y axis must cover: the line, widened by the band when it is drawn.
+        float scale_min = 0.0f;
+        float scale_max = 0.0f;
     };
+    // Storage value -> display value for a chart (docs/CHARTS_HISTORY.md).
+    enum class GraphValueTransform : uint8_t { None, Temperature, Pressure };
     struct GraphAxisRange {
         float y_min_display = 0.0f;
         float y_max_display = 0.0f;
@@ -246,7 +254,19 @@ private:
                                                 int metric_id,
                                                 float point_scale,
                                                 bool require_non_negative,
-                                                bool convert_temperature_to_display = false);
+                                                GraphValueTransform transform = GraphValueTransform::None);
+    ChartPlot::Options graph_plot_options(float point_scale,
+                                          bool require_non_negative,
+                                          GraphValueTransform transform) const;
+    static float graph_temperature_transform(float value, const void *context);
+    static float graph_pressure_transform(float value, const void *context);
+    // The faded min/max band (charts.band_enabled): one overlay object, moved to
+    // the visible chart and drawn just below it.
+    bool chart_band_enabled() const;
+    void show_chart_band(lv_obj_t *chart, int64_t pos_first, int64_t pos_last);
+    void hide_chart_band();
+    static void on_chart_band_draw_cb(lv_event_t *e);
+    void draw_chart_band(lv_layer_t *layer);
     GraphAxisRange compute_standard_graph_axis(float scale_min,
                                                float scale_max,
                                                float latest_value,
@@ -1106,7 +1126,16 @@ private:
     bool graph_refresh_units_c_ = true;
     bool graph_refresh_night_mode_ = false;
     uint32_t graph_refresh_theme_sig_ = 0;
+    bool graph_refresh_band_ = false;
     uint32_t graph_refresh_last_ms_ = 0;
+    lv_obj_t *chart_band_overlay_ = nullptr;
+    lv_obj_t *chart_band_chart_ = nullptr;
+    std::vector<ChartPlot::Sample> chart_samples_;
+    std::vector<int32_t> chart_line_values_;
+    std::vector<ChartBand::Point> chart_band_points_;
+    int64_t chart_band_pos_first_ = 0;
+    int64_t chart_band_pos_last_ = 0;
+    bool chart_band_error_logged_ = false;
     lv_obj_t *temp_graph_label_min_ = nullptr;
     lv_obj_t *temp_graph_label_now_ = nullptr;
     lv_obj_t *temp_graph_label_max_ = nullptr;

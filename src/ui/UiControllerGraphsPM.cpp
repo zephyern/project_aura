@@ -128,8 +128,8 @@ void UiController::update_pm05_info_graph() {
     float max_value = stats.max_value;
     float latest_value = stats.latest_value;
 
-    float scale_min = has_values ? min_value : 0.0f;
-    float scale_max = has_values ? max_value : kFallbackValue;
+    float scale_min = has_values ? stats.scale_min : 0.0f;
+    float scale_max = has_values ? stats.scale_max : kFallbackValue;
     GraphAxisConfig axis_config{};
     axis_config.fallback_center = kFallbackValue;
     axis_config.min_span = kMinSpan;
@@ -278,8 +278,8 @@ void UiController::update_pm25_4_info_graph() {
     float max_value = stats.max_value;
     float latest_value = stats.latest_value;
 
-    float scale_min = has_values ? min_value : 0.0f;
-    float scale_max = has_values ? max_value : fallback_value;
+    float scale_min = has_values ? stats.scale_min : 0.0f;
+    float scale_max = has_values ? stats.scale_max : fallback_value;
     GraphAxisConfig axis_config{};
     axis_config.fallback_center = fallback_value;
     axis_config.min_span = min_span;
@@ -426,8 +426,8 @@ void UiController::update_pm1_10_info_graph() {
     float max_value = stats.max_value;
     float latest_value = stats.latest_value;
 
-    float scale_min = has_values ? min_value : 0.0f;
-    float scale_max = has_values ? max_value : fallback_value;
+    float scale_min = has_values ? stats.scale_min : 0.0f;
+    float scale_max = has_values ? stats.scale_max : fallback_value;
     const float fallback_step = pm10_selected ? 10.0f : 2.0f;
     GraphAxisConfig axis_config{};
     axis_config.fallback_center = fallback_value;

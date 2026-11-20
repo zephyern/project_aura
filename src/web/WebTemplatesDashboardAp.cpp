@@ -754,6 +754,14 @@ const char kDashboardPageTemplateAp[] PROGMEM = R"HTML_DASH_AP(
           <div class="sd-note" id="historySettingsNote" role="status" aria-live="polite"></div>
           <div class="sd-note" id="sd-note" role="status" aria-live="polite">Open System to load SD history status.</div>
         </div>
+        <div class="sg">
+          <div class="sg-title">Device Charts</div>
+          <div class="sd-actions" id="chartsSettings">
+            <label><input type="checkbox" id="chartsBandEnabled"> Faded min/max band on the 1h/3h/24h charts</label>
+            <button class="btn" type="button" id="chartsSettingsSaveBtn">Save chart settings</button>
+          </div>
+          <div class="sd-note" id="chartsSettingsNote" role="status" aria-live="polite"></div>
+        </div>
       </div>
       <div class="system-col">
         <div class="sg">
@@ -2136,6 +2144,41 @@ async function saveHistorySettings() {
     if (!result || result.success !== true) throw new Error(result && result.error || 'Save failed.');
     renderHistorySettings(result);
     if (note && !note.textContent) note.textContent = 'History settings saved.';
+  } catch (error) {
+    if (note) note.textContent = error && error.message || 'Save failed.';
+  }
+}
+
+// Device chart settings (/api/charts/settings): one checkbox per field. The API
+// requires every field, so the save always sends the whole table.
+const CHART_SETTINGS = [
+  { key: 'band_enabled', id: 'chartsBandEnabled' },
+];
+function chartSettingsPayload(isChecked) {
+  const payload = {};
+  for (const setting of CHART_SETTINGS) payload[setting.key] = isChecked(setting.id);
+  return payload;
+}
+function renderChartSettings(settings) {
+  for (const setting of CHART_SETTINGS) {
+    const box = document.getElementById(setting.id);
+    if (box) box.checked = settings[setting.key] === true;
+  }
+}
+async function loadChartSettings() {
+  const response = await fetch('/api/charts/settings', { cache: 'no-store' });
+  const settings = await response.json();
+  if (!response.ok || settings.success !== true) throw new Error(settings.error || 'Chart settings unavailable.');
+  renderChartSettings(settings);
+}
+async function saveChartSettings() {
+  const note = document.getElementById('chartsSettingsNote');
+  try {
+    const result = await postJson('/api/charts/settings',
+                                  chartSettingsPayload(id => document.getElementById(id).checked));
+    if (!result || result.success !== true) throw new Error(result && result.error || 'Save failed.');
+    renderChartSettings(result);
+    if (note) note.textContent = 'Chart settings saved.';
   } catch (error) {
     if (note) note.textContent = error && error.message || 'Save failed.';
   }
@@ -3694,6 +3737,13 @@ document.getElementById('historySettingsSaveBtn').addEventListener('click', () =
 loadHistorySettings().catch(error => {
   const note = document.getElementById('historySettingsNote');
   if (note) note.textContent = error && error.message || 'History settings unavailable.';
+});
+document.getElementById('chartsSettingsSaveBtn').addEventListener('click', () => {
+  saveChartSettings().catch(() => {});
+});
+loadChartSettings().catch(error => {
+  const note = document.getElementById('chartsSettingsNote');
+  if (note) note.textContent = error && error.message || 'Chart settings unavailable.';
 });
 document.getElementById('sdClearHistoryBtn').addEventListener('click', () => {
   runSdServiceAction('/api/history/clear',
