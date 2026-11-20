@@ -147,6 +147,8 @@ void UiController::release_all_sensor_graph_runtime_objects() {
     release_lvgl_obj_array(pressure_graph_time_labels_, kGraphTimeTickCount);
 
     release_lvgl_obj(chart_band_overlay_);
+    release_lvgl_obj(chart_message_label_);
+    release_lvgl_obj(chart_period_title_);
     chart_band_chart_ = nullptr;
     chart_band_points_.clear();
 
@@ -224,6 +226,8 @@ uint16_t UiController::graph_points_for_range(TempGraphRange range) const {
             return Config::CHART_HISTORY_1H_STEPS;
         case TEMP_GRAPH_RANGE_24H:
             return Config::CHART_HISTORY_24H_SAMPLES;
+        case TEMP_GRAPH_RANGE_MONTH:
+            return month_line_points();
         case TEMP_GRAPH_RANGE_3H:
         default:
             return Config::CHART_HISTORY_3H_STEPS;
@@ -374,12 +378,23 @@ ChartPlot::Options UiController::graph_plot_options(float point_scale,
 UiController::GraphSeriesStats UiController::populate_info_chart_series(lv_obj_t *chart,
                                                                         lv_chart_series_t *series,
                                                                         uint16_t points,
+                                                                        TempGraphRange range,
                                                                         int metric_id,
                                                                         float point_scale,
                                                                         bool require_non_negative,
                                                                         GraphValueTransform transform) {
     GraphSeriesStats stats{};
-    if (!chart || !series || points == 0) {
+    if (!chart || !series) {
+        hide_chart_band();
+        return stats;
+    }
+    const ChartPlot::Options options = graph_plot_options(point_scale, require_non_negative, transform);
+    if (range == TEMP_GRAPH_RANGE_MONTH) {
+        return populate_period_chart_series(chart, series, points, metric_id, options);
+    }
+    chart_axis_ = ChartAxis{};
+    hide_chart_message();
+    if (points == 0) {
         hide_chart_band();
         return stats;
     }
@@ -405,7 +420,6 @@ UiController::GraphSeriesStats UiController::populate_info_chart_series(lv_obj_t
         sample.high = entry.maximum[metric];
     }
 
-    const ChartPlot::Options options = graph_plot_options(point_scale, require_non_negative, transform);
     chart_line_values_.resize(points);
     ChartPlot::Stats plot = ChartPlot::plotLine(chart_samples_.data(), points, options, chart_line_values_.data());
     for (uint16_t i = 0; i < points; ++i) {
@@ -736,7 +750,8 @@ void UiController::update_graph_time_labels(lv_obj_t *graph_container,
         return;
     }
 
-    if (clear_when_points_lt_two && points < 2U) {
+    const bool day_axis = chart_axis_.kind == ChartAxis::Kind::Days;
+    if ((clear_when_points_lt_two && points < 2U) || (day_axis && !chart_axis_.valid)) {
         for (uint8_t i = 0; i < label_count; ++i) {
             if (labels[i]) {
                 safe_label_set_text(labels[i], "");
@@ -776,6 +791,18 @@ void UiController::update_graph_time_labels(lv_obj_t *graph_container,
 
         char buf[24];
         bool formatted = false;
+        if (day_axis) {
+            // Day numbers across the long chart, from its first point to its last.
+            const int64_t tick_epoch = (last_tick > 0)
+                ? chart_axis_.first + ((chart_axis_.last - chart_axis_.first) * i) / last_tick
+                : chart_axis_.first;
+            if (!format_day_tick(tick_epoch, buf, sizeof(buf))) {
+                LOGE("Charts", "no local date for chart tick %lld", static_cast<long long>(tick_epoch));
+                buf[0] = '\0';
+            }
+            safe_label_set_text(label, buf);
+            continue;
+        }
         if (absolute_time) {
             const time_t tick_epoch = end_epoch - static_cast<time_t>(offset_s);
             formatted = format_epoch_hhmm(tick_epoch, buf, sizeof(buf));
@@ -1061,6 +1088,7 @@ void UiController::update_graph_zone_overlay(lv_obj_t *chart,
 }
 
 void UiController::sync_info_graph_button_state() {
+    sync_long_range_buttons();
     if (!objects.btn_info_graph) {
         return;
     }

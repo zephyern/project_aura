@@ -72,6 +72,7 @@ void UiController::update_main_texts() {
 
 void UiController::update_sensor_info_texts() {
     sync_back_button_label(objects.label_btn_back_1, false);
+    update_long_range_texts();
     if (objects.label_btn_set_altitude) safe_label_set_text_static(objects.label_btn_set_altitude, UiText::LabelSetAltitudeButton());
     if (objects.set_altitude_title_1) safe_label_set_text_static(objects.set_altitude_title_1, UiText::LabelMslPressureInfo());
     if (objects.set_altitude_title_2) safe_label_set_text_static(objects.set_altitude_title_2, UiText::LabelAltitudeAboveSeaLevel());

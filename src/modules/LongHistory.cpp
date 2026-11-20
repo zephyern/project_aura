@@ -450,7 +450,7 @@ bool LongHistory::lastWriteOk() const {
     return q == QuarterHourLogger::State::Recording && daily_.status().state == SummaryWriter::State::Recording;
 }
 
-bool LongHistory::firstDay(char *out, size_t len) const {
+bool LongHistory::firstDayKey(uint32_t &day_key) const {
     std::vector<uint32_t> years;
     First first;
     if (dailyYears(storage_, years)) {
@@ -468,10 +468,47 @@ bool LongHistory::firstDay(char *out, size_t len) const {
         if (!lock.locked() || !daily_.hasOpenBucket() || daily_.openRecord().empty()) return false;
         first.row = daily_.openRecord();
     }
+    return recordDayKey(first.row, day_key);
+}
+
+bool LongHistory::firstDay(char *out, size_t len) const {
     uint32_t day_key = 0;
-    if (!recordDayKey(first.row, day_key)) return false;
+    if (!firstDayKey(day_key)) return false;
     LocalDate::formatDayKey(day_key, out, len);
     return true;
+}
+
+namespace {
+
+struct ChartPass {
+    LongHistory::ChartRecordFn fn;
+    void *context;
+};
+bool chartRecord(const QuarterHourRow::SpanRow &row, size_t, void *context) {
+    const ChartPass &pass = *static_cast<const ChartPass *>(context);
+    pass.fn(row, pass.context);
+    return true;
+}
+
+} // namespace
+
+LongHistory::ChartRead LongHistory::hourlyChart(uint32_t start, uint32_t end, ChartRecordFn fn,
+                                                void *context) const {
+    if (!enabled_) return ChartRead::Off;
+    Lock lock(*this, 0); // the main loop's own pass; a web operation holds it only briefly
+    if (!lock.locked() || op_running_) return ChartRead::Busy;
+    ChartPass pass{fn, context};
+    HourlySummary::ReadStats stats;
+    if (HourlySummary::readRange(storage_, start, end, &chartRecord, &pass, stats) !=
+        HourlySummary::ReadResult::Read) {
+        LOGE(kTag, "hourly chart read failed (%u bad lines)", static_cast<unsigned>(stats.skipped));
+        return ChartRead::Failed;
+    }
+    if (hourly_.hasOpenBucket()) {
+        const HistoryBucket::Record &open = hourly_.openRecord();
+        if (!open.empty() && open.start_epoch >= start && open.start_epoch < end) fn(open, context);
+    }
+    return ChartRead::Read;
 }
 
 bool LongHistory::OpResults::ok() const {

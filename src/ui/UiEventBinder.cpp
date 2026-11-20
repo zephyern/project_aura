@@ -7,6 +7,7 @@
 #include "ui/UiEventBinder.h"
 
 #include <stddef.h>
+#include <stdint.h>
 
 #include "ui/UiController.h"
 #include "ui/BacklightManager.h"
@@ -98,6 +99,8 @@ void UiEventBinder::bindAvailableEvents(UiController &owner, int screen_id) {
         {objects.btn_pm1_info, UiController::on_pm1_info_event_cb, LV_EVENT_CLICKED},
         {objects.card_pressure_pro, UiController::on_card_pressure_event_cb, LV_EVENT_CLICKED},
         {objects.btn_back_1, UiController::on_sensors_info_back_event_cb, LV_EVENT_CLICKED},
+        {objects.btn_chart_period_prev, UiController::on_chart_period_prev_event_cb, LV_EVENT_CLICKED},
+        {objects.btn_chart_period_next, UiController::on_chart_period_next_event_cb, LV_EVENT_CLICKED},
         {objects.btn_set_altitude, UiController::on_set_altitude_event_cb, LV_EVENT_CLICKED},
         {objects.btn_altitude_plus_100, UiController::on_altitude_plus_100_event_cb, LV_EVENT_CLICKED},
         {objects.btn_altitude_plus_10, UiController::on_altitude_plus_10_event_cb, LV_EVENT_CLICKED},
@@ -438,6 +441,17 @@ void UiEventBinder::bindAvailableEvents(UiController &owner, int screen_id) {
                           click_binding_count);
     add_events(click_bindings, click_binding_count);
     add_events(value_bindings, value_binding_count);
+
+    // The Month buttons share one callback; the group index rides in user data.
+    for (size_t i = 0; i < UiController::kRangeGroupCount; ++i) {
+        lv_obj_t *btn = objects.*UiController::kRangeGroups[i].month_button;
+        if (!objectBelongsToScreen(btn, screen_root)) {
+            continue;
+        }
+        lv_obj_remove_event_cb(btn, UiController::on_range_month_event_cb);
+        lv_obj_add_event_cb(btn, UiController::on_range_month_event_cb, LV_EVENT_VALUE_CHANGED,
+                            reinterpret_cast<void *>(static_cast<uintptr_t>(i)));
+    }
 }
 
 void UiEventBinder::applyToggleStylesForAvailableObjects(UiController &owner, int screen_id) {
@@ -546,6 +560,12 @@ void UiEventBinder::applyToggleStylesForAvailableObjects(UiController &owner, in
         }
         owner.apply_toggle_style(btn);
     }
+    for (size_t i = 0; i < UiController::kRangeGroupCount; ++i) {
+        lv_obj_t *btn = objects.*UiController::kRangeGroups[i].month_button;
+        if (objectBelongsToScreen(btn, screen_root)) {
+            owner.apply_toggle_style(btn);
+        }
+    }
 }
 
 void UiEventBinder::applyCheckedStatesForAvailableObjects(UiController &owner, int screen_id) {
@@ -638,6 +658,10 @@ void UiEventBinder::applyCheckedStatesForAvailableObjects(UiController &owner, i
     set_checked(objects.btn_co_range_1h, owner.co_graph_range_ == UiController::TEMP_GRAPH_RANGE_1H);
     set_checked(objects.btn_co_range_3h, owner.co_graph_range_ == UiController::TEMP_GRAPH_RANGE_3H);
     set_checked(objects.btn_co_range_24h, owner.co_graph_range_ == UiController::TEMP_GRAPH_RANGE_24H);
+    for (size_t i = 0; i < UiController::kRangeGroupCount; ++i) {
+        const UiController::RangeGroup &group = UiController::kRangeGroups[i];
+        set_checked(objects.*group.month_button, owner.*group.range == UiController::TEMP_GRAPH_RANGE_MONTH);
+    }
     set_checked(objects.btn_pressure_range_1h, owner.pressure_graph_range_ == UiController::TEMP_GRAPH_RANGE_1H);
     set_checked(objects.btn_pressure_range_3h, owner.pressure_graph_range_ == UiController::TEMP_GRAPH_RANGE_3H);
     set_checked(objects.btn_pressure_range_24h, owner.pressure_graph_range_ == UiController::TEMP_GRAPH_RANGE_24H);

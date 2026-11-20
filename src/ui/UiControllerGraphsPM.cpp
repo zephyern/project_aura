@@ -120,6 +120,7 @@ void UiController::update_pm05_info_graph() {
     const GraphSeriesStats stats = populate_info_chart_series(objects.chart_pm05_info,
                                                               series,
                                                               points,
+                                                              pm05_graph_range_,
                                                               static_cast<int>(ChartsHistory::METRIC_PM05),
                                                               1.0f,
                                                               true);
@@ -270,6 +271,7 @@ void UiController::update_pm25_4_info_graph() {
     const GraphSeriesStats stats = populate_info_chart_series(objects.chart_pm25_4_graph,
                                                               series,
                                                               points,
+                                                              pm25_4_graph_range_,
                                                               static_cast<int>(metric),
                                                               10.0f,
                                                               true);
@@ -418,6 +420,7 @@ void UiController::update_pm1_10_info_graph() {
     const GraphSeriesStats stats = populate_info_chart_series(objects.chart_pm1_10_info,
                                                               series,
                                                               points,
+                                                              pm1_10_graph_range_,
                                                               static_cast<int>(metric),
                                                               10.0f,
                                                               true);

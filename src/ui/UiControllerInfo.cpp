@@ -560,6 +560,7 @@ void UiController::update_sensor_info_ui() {
     sync_threshold_dots_visibility();
     sync_info_graph_button_state();
     sync_pressure_altitude_ui();
+    sync_chart_period_header();
 }
 
 void UiController::restore_sensor_info_selection() {
