@@ -20,6 +20,23 @@ enum class DailyStorageFailureKind : uint8_t {
     Unknown,
 };
 
+enum class DirListResult : uint8_t {
+    Listed,
+    Absent, // the directory does not exist; not a media failure
+    Failed, // see lastFailureKind()
+};
+
+enum class DirRemoveResult : uint8_t {
+    Removed,
+    Absent,   // nothing to remove
+    NotEmpty, // left in place; not a media failure
+    Failed,   // see lastFailureKind()
+};
+
+// Receives one directory entry (never "." or ".."). Runs while the storage is
+// locked, so it must not call back into the storage. Return false to stop.
+using DirEntryFn = bool (*)(const char *name, bool is_dir, void *context);
+
 class DailyHistoryStorage {
 public:
     virtual ~DailyHistoryStorage() = default;
@@ -40,5 +57,8 @@ public:
     virtual bool readBinary(const char *path, void *out, size_t len, size_t &out_len) const = 0;
     virtual bool writeBinaryAtomic(const char *path, const void *data, size_t len) = 0;
     virtual bool removeFile(const char *path) = 0;
+    // Calls `fn` for each entry of the directory `path`, in no particular order.
+    virtual DirListResult listDir(const char *path, DirEntryFn fn, void *context) const = 0;
+    virtual DirRemoveResult removeEmptyDir(const char *path) = 0;
     virtual DailyStorageFailureKind lastFailureKind() const = 0;
 };
