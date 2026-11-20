@@ -69,6 +69,16 @@ void UiController::update_sensor_info_ui() {
             }
             break;
         }
+        case INFO_OUTDOOR: {
+            // Value and unit come from update_outdoor_card(); outdoor has no
+            // comfort zones, so the dot stays grey and the view is the chart.
+            set_dot_color(objects.dot_sensor_info, color_inactive());
+            set_temperature_info_mode(true);
+            if (should_refresh_active_graph(INFO_OUTDOOR, temp_graph_range_, temperature_graph_points())) {
+                update_temperature_info_graph();
+            }
+            break;
+        }
         case INFO_VOC: {
             const bool gas_warmup = sensorManager.isWarmupActive();
             if (gas_warmup) {
@@ -530,6 +540,7 @@ void UiController::update_sensor_info_ui() {
                 strcpy(buf, UiText::ValueMissingShort());
             }
             safe_label_set_text(objects.label_delta_26, buf);
+            update_pressure_info_24h(buf);
 
             lv_color_t delta_3h_color = night_mode
                 ? color_card_border()
@@ -565,9 +576,23 @@ void UiController::update_sensor_info_ui() {
 
 void UiController::restore_sensor_info_selection() {
     switch (info_sensor) {
+        case INFO_OUTDOOR: {
+            hide_all_sensor_info_containers();
+            set_visible(objects.temperature_info, true);
+            set_visible(objects.label_temperature_text, false);
+            if (objects.label_sensor_info_title) {
+                safe_label_set_text(objects.label_sensor_info_title, UiText::LabelOutdoorInfoTitle());
+            }
+            outdoor_card_drawn_ = false;
+            update_outdoor_card();
+            set_temperature_info_mode(true);
+            update_sensor_info_ui();
+            break;
+        }
         case INFO_TEMP: {
             hide_all_sensor_info_containers();
             set_visible(objects.temperature_info, true);
+            set_visible(objects.label_temperature_text, true);
             if (objects.label_sensor_info_title) {
                 safe_label_set_text(objects.label_sensor_info_title, UiText::SensorInfoTitleTemperature());
             }

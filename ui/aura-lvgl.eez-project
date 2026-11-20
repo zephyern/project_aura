@@ -4719,6 +4719,270 @@
                   "groupIndex": 0
                 },
                 {
+                  "objID": "14c59216-2d49-4775-9ca3-941382862c93",
+                  "type": "LVGLContainerWidget",
+                  "left": 493,
+                  "top": 86,
+                  "width": 140,
+                  "height": 115,
+                  "customInputs": [],
+                  "customOutputs": [],
+                  "style": {
+                    "objID": "486818a2-5d73-4b12-823c-1e4cb8b31f50",
+                    "useStyle": "default",
+                    "conditionalStyles": [],
+                    "childStyles": []
+                  },
+                  "hiddenInEditor": false,
+                  "timeline": [],
+                  "eventHandlers": [],
+                  "identifier": "card_outdoor_pro",
+                  "leftUnit": "px",
+                  "topUnit": "px",
+                  "widthUnit": "px",
+                  "heightUnit": "px",
+                  "children": [
+                    {
+                      "objID": "8c438dd2-c1ce-49e6-934a-99a9e874135a",
+                      "type": "LVGLLabelWidget",
+                      "left": 60,
+                      "top": 86,
+                      "width": 16,
+                      "height": 17,
+                      "customInputs": [],
+                      "customOutputs": [],
+                      "style": {
+                        "objID": "560ffaa9-201d-4b00-9341-2db2bdf26bc5",
+                        "useStyle": "default",
+                        "conditionalStyles": [],
+                        "childStyles": []
+                      },
+                      "hiddenInEditor": false,
+                      "timeline": [],
+                      "eventHandlers": [],
+                      "identifier": "label_outdoor_unit",
+                      "leftUnit": "px",
+                      "topUnit": "px",
+                      "widthUnit": "content",
+                      "heightUnit": "content",
+                      "children": [],
+                      "widgetFlags": "",
+                      "hiddenFlagType": "literal",
+                      "clickableFlagType": "literal",
+                      "flagScrollbarMode": "",
+                      "flagScrollDirection": "",
+                      "scrollSnapX": "",
+                      "scrollSnapY": "",
+                      "checkedStateType": "literal",
+                      "disabledStateType": "literal",
+                      "states": "",
+                      "useStyle": "style_text_primary",
+                      "localStyles": {
+                        "objID": "7e1f096f-3105-4387-93d5-758244122143",
+                        "definition": {
+                          "MAIN": {
+                            "DEFAULT": {
+                              "text_font": "jet_reg_14"
+                            }
+                          }
+                        }
+                      },
+                      "group": "",
+                      "groupIndex": 0,
+                      "text": "°C",
+                      "textType": "literal",
+                      "longMode": "WRAP",
+                      "recolor": false
+                    },
+                    {
+                      "objID": "7b030a0e-9a46-4358-b8fa-523aab78db7b",
+                      "type": "LVGLLabelWidget",
+                      "left": 8,
+                      "top": 44,
+                      "width": 120,
+                      "height": 35,
+                      "customInputs": [],
+                      "customOutputs": [],
+                      "style": {
+                        "objID": "2ae446d0-3c9e-4bfb-a2c7-48ad446ca50b",
+                        "useStyle": "default",
+                        "conditionalStyles": [],
+                        "childStyles": []
+                      },
+                      "hiddenInEditor": false,
+                      "timeline": [],
+                      "eventHandlers": [],
+                      "identifier": "label_outdoor_value",
+                      "leftUnit": "px",
+                      "topUnit": "px",
+                      "widthUnit": "px",
+                      "heightUnit": "content",
+                      "children": [],
+                      "widgetFlags": "",
+                      "hiddenFlagType": "literal",
+                      "clickableFlagType": "literal",
+                      "flagScrollbarMode": "",
+                      "flagScrollDirection": "",
+                      "scrollSnapX": "",
+                      "scrollSnapY": "",
+                      "checkedStateType": "literal",
+                      "disabledStateType": "literal",
+                      "states": "",
+                      "useStyle": "style_text_primary",
+                      "localStyles": {
+                        "objID": "1d900129-63a7-4910-91fa-d2f79657a0db",
+                        "definition": {
+                          "MAIN": {
+                            "DEFAULT": {
+                              "text_font": "jet_med_48",
+                              "text_align": "CENTER"
+                            }
+                          }
+                        }
+                      },
+                      "group": "",
+                      "groupIndex": 0,
+                      "text": "21.6",
+                      "textType": "literal",
+                      "longMode": "WRAP",
+                      "recolor": false
+                    },
+                    {
+                      "objID": "8518f794-94c5-4dce-a8a5-f5d0d5e419c4",
+                      "type": "LVGLLabelWidget",
+                      "left": 8,
+                      "top": 8,
+                      "width": 124,
+                      "height": 20,
+                      "customInputs": [],
+                      "customOutputs": [],
+                      "style": {
+                        "objID": "c6aab9ab-2750-4661-a412-3671ca7ee1f7",
+                        "useStyle": "default",
+                        "conditionalStyles": [],
+                        "childStyles": []
+                      },
+                      "hiddenInEditor": false,
+                      "timeline": [],
+                      "eventHandlers": [],
+                      "identifier": "label_outdoor_title",
+                      "leftUnit": "px",
+                      "topUnit": "px",
+                      "widthUnit": "px",
+                      "heightUnit": "content",
+                      "children": [],
+                      "widgetFlags": "",
+                      "hiddenFlagType": "literal",
+                      "clickableFlagType": "literal",
+                      "flagScrollbarMode": "",
+                      "flagScrollDirection": "",
+                      "scrollSnapX": "",
+                      "scrollSnapY": "",
+                      "checkedStateType": "literal",
+                      "disabledStateType": "literal",
+                      "states": "",
+                      "useStyle": "style_text_primary",
+                      "localStyles": {
+                        "objID": "205746e4-53f6-459a-aed9-73afc8bcf5b7",
+                        "definition": {
+                          "MAIN": {
+                            "DEFAULT": {
+                              "text_font": "jet_reg_18",
+                              "text_align": "CENTER"
+                            }
+                          }
+                        }
+                      },
+                      "group": "",
+                      "groupIndex": 0,
+                      "text": "OUTDOOR",
+                      "textType": "literal",
+                      "longMode": "WRAP",
+                      "recolor": false
+                    },
+                    {
+                      "objID": "97904981-faca-422b-83f2-3756dece5d99",
+                      "type": "LVGLLabelWidget",
+                      "left": 4,
+                      "top": 40,
+                      "width": 132,
+                      "height": 44,
+                      "customInputs": [],
+                      "customOutputs": [],
+                      "style": {
+                        "objID": "b134d4dd-01f0-4983-8c02-b198c54e661c",
+                        "useStyle": "default",
+                        "conditionalStyles": [],
+                        "childStyles": []
+                      },
+                      "hiddenInEditor": false,
+                      "timeline": [],
+                      "eventHandlers": [],
+                      "identifier": "label_outdoor_message",
+                      "leftUnit": "px",
+                      "topUnit": "px",
+                      "widthUnit": "px",
+                      "heightUnit": "content",
+                      "children": [],
+                      "widgetFlags": "",
+                      "hiddenFlagType": "literal",
+                      "clickableFlagType": "literal",
+                      "flagScrollbarMode": "",
+                      "flagScrollDirection": "",
+                      "scrollSnapX": "",
+                      "scrollSnapY": "",
+                      "checkedStateType": "literal",
+                      "disabledStateType": "literal",
+                      "states": "",
+                      "useStyle": "style_text_primary",
+                      "localStyles": {
+                        "objID": "37d6c368-55a8-47fa-bffb-573f4cf56c03",
+                        "definition": {
+                          "MAIN": {
+                            "DEFAULT": {
+                              "text_font": "jet_reg_14",
+                              "text_align": "CENTER"
+                            }
+                          }
+                        }
+                      },
+                      "group": "",
+                      "groupIndex": 0,
+                      "text": "Weather service error",
+                      "textType": "literal",
+                      "longMode": "WRAP",
+                      "recolor": false,
+                      "hiddenFlag": true
+                    }
+                  ],
+                  "widgetFlags": "",
+                  "hiddenFlagType": "literal",
+                  "clickableFlag": true,
+                  "clickableFlagType": "literal",
+                  "flagScrollbarMode": "",
+                  "flagScrollDirection": "",
+                  "scrollSnapX": "",
+                  "scrollSnapY": "",
+                  "checkedStateType": "literal",
+                  "disabledStateType": "literal",
+                  "states": "",
+                  "useStyle": "style_card_base",
+                  "localStyles": {
+                    "objID": "1e477334-35a4-402c-b29c-bbf4fe74fcdc",
+                    "definition": {
+                      "MAIN": {
+                        "DEFAULT": {
+                          "radius": 15,
+                          "bg_opa": 255
+                        }
+                      }
+                    }
+                  },
+                  "group": "",
+                  "groupIndex": 0,
+                  "hiddenFlag": true
+                },
+                {
                   "objID": "a622d903-04de-44ff-abba-72e8ff235b30",
                   "type": "LVGLContainerWidget",
                   "left": 341,
@@ -42482,6 +42746,59 @@
                   },
                   "group": "",
                   "groupIndex": 0
+                },
+                {
+                  "objID": "f9cdc815-c0ed-43fd-8b9b-b01b30fc36e2",
+                  "type": "LVGLLabelWidget",
+                  "left": 44,
+                  "top": 385,
+                  "width": 400,
+                  "height": 20,
+                  "customInputs": [],
+                  "customOutputs": [],
+                  "style": {
+                    "objID": "c11f0058-2a5f-4172-9dc9-baa23fe30f8e",
+                    "useStyle": "default",
+                    "conditionalStyles": [],
+                    "childStyles": []
+                  },
+                  "hiddenInEditor": false,
+                  "timeline": [],
+                  "eventHandlers": [],
+                  "identifier": "label_pressure_info_24h",
+                  "leftUnit": "px",
+                  "topUnit": "px",
+                  "widthUnit": "content",
+                  "heightUnit": "content",
+                  "children": [],
+                  "widgetFlags": "",
+                  "hiddenFlagType": "literal",
+                  "clickableFlagType": "literal",
+                  "flagScrollbarMode": "",
+                  "flagScrollDirection": "",
+                  "scrollSnapX": "",
+                  "scrollSnapY": "",
+                  "checkedStateType": "literal",
+                  "disabledStateType": "literal",
+                  "states": "",
+                  "useStyle": "style_text_primary",
+                  "localStyles": {
+                    "objID": "c9a24293-a0f9-42f7-a501-5a5d35912fa8",
+                    "definition": {
+                      "MAIN": {
+                        "DEFAULT": {
+                          "text_font": "jet_reg_18"
+                        }
+                      }
+                    }
+                  },
+                  "group": "",
+                  "groupIndex": 0,
+                  "text": "24h: -13.2 hPa",
+                  "textType": "literal",
+                  "longMode": "WRAP",
+                  "recolor": false,
+                  "hiddenFlag": true
                 }
               ],
               "widgetFlags": "",
@@ -56156,7 +56473,7 @@
       "descent": 2,
       "glyphs": [],
       "lvglRanges": "32-126",
-      "lvglSymbols": "绝对志海拔且严产以利前发受在域墙子孢害容引强性损敏易注浴滋理的等螨角请财过道防∞³₂©、一简体文上下不丢个中为主义习二于亮人仅仍件休优会传低作使例供保偏停储先光入关净准减出击分切划初到功加动化区升即厂压参取变口可合同启吸周呼和唤器回堆增处备复外多夜天太失头好始存学定室家密将小少尘尽屏工差已带常幕干平年并应度庭建开式当很忘快态恢感慢或户房手打扫扬找报择持指按排探接控描摸操数整断新无日时暂暖最月期未机束条来极查校检模次止正此步每气水汽油测消清温湿源灯灶炉点烁烟热燥状生用电略监省眠短码示禁离秀秒移稳空窗立系结统继续维缓置考背能脑自至般良色菌虑行表要触警计认议记设诊试误读调败质车较输迅运返远连适选通速配醒重量钟错长闪闭问间闷降除险雾需霉静非预题颜风高鲜默–删剩卡历史后录旧明满约细落：法全部比曲线两种单位，侧。钮内",
+      "lvglSymbols": "绝对志海拔且严产以利前发受在域墙子孢害容引强性损敏易注浴滋理的等螨角请财过道防∞³₂©、一简体文上下不丢个中为主义习二于亮人仅仍件休优会传低作使例供保偏停储先光入关净准减出击分切划初到功加动化区升即厂压参取变口可合同启吸周呼和唤器回堆增处备复外多夜天太失头好始存学定室家密将小少尘尽屏工差已带常幕干平年并应度庭建开式当很忘快态恢感慢或户房手打扫扬找报择持指按排探接控描摸操数整断新无日时暂暖最月期未机束条来极查校检模次止正此步每气水汽油测消清温湿源灯灶炉点烁烟热燥状生用电略监省眠短码示禁离秀秒移稳空窗立系结统继续维缓置考背能脑自至般良色菌虑行表要触警计认议记设诊试误读调败质车较输迅运返远连适选通速配醒重量钟错长闪闭问间闷降除险雾需霉静非预题颜风高鲜默–删剩卡历史后录旧明满约细落：法全部比曲线两种单位，侧。钮内网页络钥效服务",
       "lvglAdditionalSources": [],
       "lvglGlyphs": {
         "encodings": [],
@@ -56179,7 +56496,7 @@
       "descent": 2,
       "glyphs": [],
       "lvglRanges": "32-126",
-      "lvglSymbols": "图拔海询面待志没他信其再原叠号各因它实帮总惩成把本看组罚跟随任何你别名后否块延才掉池浏确览识迟链如络网固勿（）了位典单印善型城射市得御改景活流留精绕：≥₂危告壁完护携撤毒浓独碳达³₂但免南含官尾径插格片由碎米草被见该起超这避采里且严以利前在域墙子孢害容引损浴滋等角请财防。°≈₂µ³≤©、；一的意，肺值有想大灰对约德倦稍现法果国影响舒效率睡阈标住宜范围助专注疲劳冷导致嗜力健康理想受显著反映挥发性物涂料具洁品妆基算线越露痛眼鼻刺激蓝内轻异味氮氧燃烧产辆交污染道哮喘做饭副甲醛造板地胶黏剂纺织装修是喉材释放安全敏群细颗粒深部血液与心管疾病相包括烹饪蜡烛滤些施土花粉路方判微剧烈趋势幅波则强皮肤佳抑制螨衡更绝促进决策比易腻散困难转晴暴过明简体文上下不丢个中为主义习二于亮人仅仍件休优会传低作使例供保偏停储先光入关净准减出击分切划初到功加动化区升即厂压参取变口可合同启吸周呼和唤器回堆增处备复外多夜天太失头好始存学定室家密将小少尘尽屏工差已带常幕干平年并应度庭建开式当很忘快态恢感慢或户房手打扫扬找报择持指按排探接控描摸操数整断新无日时暂暖最月期未机束条来极查校检模次止正此步每气水汽油测消清温湿源灯灶炉点烁烟热燥状生用电略监省眠短码示禁离秀秒移稳空窗立系结统继续维缓置考背能脑自至般良色菌虑行表要触警计认议记设诊试误读调败质车较输迅运返远连适选通速配醒重量钟错长闪闭问间闷降除险雾需霉静非预题颜风高鲜默–删剩卡历史录旧满落曲两种侧钮",
+      "lvglSymbols": "图拔海询面待志没他信其再原叠号各因它实帮总惩成把本看组罚跟随任何你别名后否块延才掉池浏确览识迟链如络网固勿（）了位典单印善型城射市得御改景活流留精绕：≥₂危告壁完护携撤毒浓独碳达³₂但免南含官尾径插格片由碎米草被见该起超这避采里且严以利前在域墙子孢害容引损浴滋等角请财防。°≈₂µ³≤©、；一的意，肺值有想大灰对约德倦稍现法果国影响舒效率睡阈标住宜范围助专注疲劳冷导致嗜力健康理想受显著反映挥发性物涂料具洁品妆基算线越露痛眼鼻刺激蓝内轻异味氮氧燃烧产辆交污染道哮喘做饭副甲醛造板地胶黏剂纺织装修是喉材释放安全敏群细颗粒深部血液与心管疾病相包括烹饪蜡烛滤些施土花粉路方判微剧烈趋势幅波则强皮肤佳抑制螨衡更绝促进决策比易腻散困难转晴暴过明简体文上下不丢个中为主义习二于亮人仅仍件休优会传低作使例供保偏停储先光入关净准减出击分切划初到功加动化区升即厂压参取变口可合同启吸周呼和唤器回堆增处备复外多夜天太失头好始存学定室家密将小少尘尽屏工差已带常幕干平年并应度庭建开式当很忘快态恢感慢或户房手打扫扬找报择持指按排探接控描摸操数整断新无日时暂暖最月期未机束条来极查校检模次止正此步每气水汽油测消清温湿源灯灶炉点烁烟热燥状生用电略监省眠短码示禁离秀秒移稳空窗立系结统继续维缓置考背能脑自至般良色菌虑行表要触警计认议记设诊试误读调败质车较输迅运返远连适选通速配醒重量钟错长闪闭问间闷降除险雾需霉静非预题颜风高鲜默–删剩卡历史录旧满落曲两种侧钮页钥服务",
       "lvglAdditionalSources": [],
       "lvglGlyphs": {
         "encodings": [],

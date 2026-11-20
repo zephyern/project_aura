@@ -166,8 +166,9 @@ const UiController::RangeGroup UiController::kRangeGroups[] = {
       {&objects_t::btn_temp_range_year, &objects_t::label_btn_temp_range_year},
       {&objects_t::btn_temp_range_all, &objects_t::label_btn_temp_range_all}},
      &UiController::temp_graph_range_,
-     &UiController::temp_graph_mode_, &UiController::set_temperature_info_mode,
-     [](InfoSensor s) { return s == INFO_TEMP; },
+     &UiController::temp_chart_shown_, &UiController::set_temperature_info_mode,
+     // Indoor and outdoor temperature share these buttons and this range.
+     [](InfoSensor s) { return s == INFO_TEMP || s == INFO_OUTDOOR; },
      [](UiController &ui) {
          ui.info_sensor = INFO_TEMP;
          ui.restore_sensor_info_selection();
