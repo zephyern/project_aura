@@ -373,6 +373,13 @@ the intended hardware profile:
 ./scripts/build_idf.ps1 -Profile 7_dual_i2c -IdfPath '<esp-idf-v6.1>' -ToolsPath '<idf-tools>'
 ```
 
+On Linux, `scripts/build_idf.sh` runs the same steps:
+
+```bash
+./scripts/build_idf.sh --profile 4_3 --idf-path <esp-idf-v6.1>
+./scripts/build_idf.sh --profile 7_dual_i2c --idf-path <esp-idf-v6.1>
+```
+
 These commands only build; they do not flash or open serial ports. See the
 [native build guide](docs/IDF61_MIGRATION.md) and the
 [release packaging procedure](docs/releases/RELEASING.md) for profile-bound
