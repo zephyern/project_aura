@@ -1,5 +1,6 @@
 #include <unity.h>
 
+#include <algorithm>
 #include <map>
 #include <sstream>
 #include <string>
@@ -204,6 +205,27 @@ public:
         text_files.erase(final_path);
         binary_files.erase(final_path);
         failure_kind = DailyStorageFailureKind::None;
+        return true;
+    }
+
+    bool readRange(const char *path, size_t offset, void *out, size_t len,
+                   size_t &out_len) const override {
+        out_len = 0;
+        if (!ready || !path || (!out && len)) return false;
+        auto it = text_files.find(path);
+        if (it == text_files.end()) return false;
+        if (offset < it->second.size()) {
+            out_len = std::min(len, it->second.size() - offset);
+            memcpy(out, it->second.data() + offset, out_len);
+        }
+        return true;
+    }
+
+    bool truncateAtomic(const char *path, size_t keep_len) override {
+        if (!ready || !path) return false;
+        auto it = text_files.find(path);
+        if (it == text_files.end() || keep_len > it->second.size()) return false;
+        it->second.resize(keep_len);
         return true;
     }
 

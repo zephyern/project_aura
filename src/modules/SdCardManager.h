@@ -121,6 +121,9 @@ public:
     bool removeDailyCsvRowsOnOrAfterAtomic(const char *path,
                                             const char *cutoff_iso_day) override;
     bool readBinary(const char *path, void *out, size_t len, size_t &out_len) const override;
+    bool readRange(const char *path, size_t offset, void *out, size_t len,
+                   size_t &out_len) const override;
+    bool truncateAtomic(const char *path, size_t keep_len) override;
     bool writeBinaryAtomic(const char *path, const void *data, size_t len) override;
     bool removeFile(const char *path) override;
     DirListResult listDir(const char *path, DirEntryFn fn, void *context) const override;
