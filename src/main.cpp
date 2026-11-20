@@ -48,6 +48,7 @@
 #include "modules/LongHistory.h"
 #include "modules/WeatherManager.h"
 #include "modules/WeatherTask.h"
+#include "modules/OutdoorFeed.h"
 #include "modules/NetworkManager.h"
 #include "modules/MqttManager.h"
 #include "modules/SensorManager.h"
@@ -1043,7 +1044,13 @@ void loop()
                                          system_time_trusted);
         uiController.onSensorPoll(sensor_poll);
     }
+    // Outdoor temperature (docs/WEATHER.md): latest result only, never an older value.
+    static uint32_t outdoor_seq = 0;
+    const WeatherManager::Snapshot outdoor = weatherManager.snapshot();
+    OutdoorFeed::apply(outdoor, currentData);
     if (!wake_background_paused) {
+        OutdoorFeed::apply(outdoor, sensor_poll.history_data);
+        sensor_poll.history_fresh_mask |= OutdoorFeed::freshBit(outdoor, outdoor_seq);
         chartsHistory.update(sensor_poll.history_data,
                              storage,
                              sensorManager.isWarmupActive(),

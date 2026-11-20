@@ -48,6 +48,33 @@ value is dropped.
 | Answer is not JSON, is cut off, or lacks `main.temp` / `dt` | Weather service error |
 | Turned on without a key or a place | Not set up |
 
+## History
+
+Each successful reading is also recorded as the outdoor temperature metric
+(`METRIC_OUTDOOR_TEMP`, the 15th chart metric) with its source, so a physical
+thermometer added later never mixes silently with weather-service readings.
+
+- Source: `ChartsHistory::OutdoorSource` — `1` is the weather API; `2` is kept
+  for a thermometer and not written yet. A record has outdoor data exactly when
+  it carries a source; anything else is refused when it is loaded.
+- Every completed check counts as one new sample; between checks the reading
+  is not counted again. A failed check is a gap at once.
+- 5-minute history (`/charts.bin` blocks) moved to schema v4. On the first
+  start after an update the v3 blocks load with every value kept and no outdoor
+  data; each block is rewritten as v4 when its hour comes round again.
+- Quarter-hour, hourly and daily files gain the `outdoor_temp_*` columns and an
+  `outdoor_temp_source` column holding the word `api` (empty when there is no
+  outdoor data). These files are new in this firmware line, so no older layout
+  exists to read.
+- The daily min/max snapshot moved to version 3 (15 metrics); version 1 and 2
+  snapshots and the old single-state file are widened on load, keeping the
+  open day and any days waiting to be written.
+- The daily CSV gets an `outdoor_temp` row on days with outdoor data, in °C or
+  °F like the indoor temperature.
+- Scope (Daniel, Nov 9 2026): device screen, charts and history only. The web
+  chart export (`/api/charts/history`) skips it, and MQTT and the DAC outputs
+  are unchanged.
+
 ## Web API
 
 | Route | Body | Notes |

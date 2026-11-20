@@ -50,7 +50,9 @@ void fillJson(ArduinoJson::JsonObject root,
     const uint32_t latest_epoch = history.latestEpoch();
     const bool has_epoch = latest_epoch > Config::TIME_VALID_EPOCH;
 
-    root["schema_version"] = ChartsHistory::kSchemaVersion;
+    // The web chart shape is unchanged by flash schema v4 (outdoor temperature
+    // is not on the web page), so the API keeps reporting version 3.
+    root["schema_version"] = kWebChartSchemaVersion;
     root["value_semantics"] = "mean_with_labelled_legacy_snapshots";
     root["success"] = true;
     root["group"] = group_name;
@@ -144,6 +146,7 @@ void fillJson(ArduinoJson::JsonObject root,
 
 void fillHistoryJson(ArduinoJson::JsonObject root, const HistoryView &history,
                      uint32_t after_epoch, uint16_t limit) {
+    static_assert(kWebChartSchemaVersion == 3, "keep the export schema name in step");
     root["schema"] = "aura.history.v3";
     root["optional_gas_value_units"] = "ppm (O2: %Vol)";
     root["step_s"] = kChartStepS;
@@ -166,6 +169,9 @@ void fillHistoryJson(ArduinoJson::JsonObject root, const HistoryView &history,
         // Numeric metric IDs are fixed by the versioned schema, never by display order.
         for (int m = 0; m < ChartsHistory::kMetricCount; ++m) {
             if (!(record.valid_mask & (1U << m))) continue;
+            // Outdoor temperature is device UI, charts and history only, not
+            // the web page (Daniel, Nov 9 2026, plan Q9; docs/WEATHER.md).
+            if (m == ChartsHistory::METRIC_OUTDOOR_TEMP) continue;
             char key[4]; snprintf(key, sizeof(key), "%d", m);
             auto metric = metrics[key].to<ArduinoJson::JsonObject>();
             metric[record.kind == ChartsHistory::Summary ? "mean" : "value"] = record.values[m];

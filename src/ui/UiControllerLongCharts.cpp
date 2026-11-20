@@ -362,8 +362,9 @@ UiController::PeriodChartStatus UiController::load_period_chart(LongRange range,
     }
     const uint32_t start = layout.start;
     const uint32_t end = layout.end;
-    const bool gas = metric_id == ChartsHistory::METRIC_OPTIONAL_GAS;
-    const uint8_t source = gas ? chartsHistory.optionalGasType() : 0;
+    // Gas and outdoor records carry a source; only the current one belongs here.
+    const bool has_source = metric_id == ChartsHistory::METRIC_OPTIONAL_GAS || metric_id == ChartsHistory::METRIC_OUTDOOR_TEMP;
+    const uint8_t source = chartsHistory.chartSource(static_cast<ChartsHistory::Metric>(metric_id));
     // The period in progress is read again each hour; a past one never changes.
     const time_t now = time(nullptr);
     const uint32_t hour = (now >= static_cast<time_t>(start) && now < static_cast<time_t>(end))
@@ -381,7 +382,7 @@ UiController::PeriodChartStatus UiController::load_period_chart(LongRange range,
                                           LongChartSeries::slotsCovering(start, end, layout.band_slot_seconds)};
     LongChartSeries::Builder line;
     LongChartSeries::Builder band;
-    if (!line.reset(line_grid, gas, source) || !band.reset(band_grid, gas, source)) {
+    if (!line.reset(line_grid, has_source, source) || !band.reset(band_grid, has_source, source)) {
         LOGE(kTag, "empty grid for %s %ld", spec.name, static_cast<long>(nav.nav.current));
         return PeriodChartStatus::Unreadable;
     }
@@ -445,7 +446,7 @@ UiController::GraphSeriesStats UiController::populate_period_chart_series(lv_obj
     }
     const PeriodChartCache &cache = period_chart_;
     const bool usable = cache.loaded && cache.range == range && cache.metric == metric_id &&
-                        cache.source == (metric_id == ChartsHistory::METRIC_OPTIONAL_GAS ? chartsHistory.optionalGasType() : 0) &&
+                        cache.source == chartsHistory.chartSource(static_cast<ChartsHistory::Metric>(metric_id)) &&
                         cache.period == period_navs_[static_cast<size_t>(range)].nav.current &&
                         (status == PeriodChartStatus::Ready || status == PeriodChartStatus::Busy);
     if (!usable || cache.line.size() != points || points < 2U) {

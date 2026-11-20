@@ -13,6 +13,11 @@
 
 namespace WebChartsApiUtils {
 
+// The /api/charts JSON shape version. Independent of the flash block schema
+// (ChartsHistory::kSchemaVersion): v4 only added outdoor temperature, which
+// the web API does not carry.
+constexpr uint16_t kWebChartSchemaVersion = 3;
+
 class HistoryView {
 public:
     virtual ~HistoryView() = default;

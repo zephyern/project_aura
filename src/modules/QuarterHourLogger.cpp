@@ -149,12 +149,14 @@ void QuarterHourLogger::onInterval(const ChartsHistory::CompletedInterval &inter
                 continue;
             }
             add.source = e.optional_gas_type;
+        } else if (m == ChartsHistory::METRIC_OUTDOOR_TEMP) {
+            add.source = e.outdoor_source;  // validEntry() guarantees a known source
         }
         HistoryAggregate &into = quarter_.metrics[m];
         const uint8_t previous_source = into.source;
         const HistoryMergeResult r = HistoryAggregates::mergeNewer(into, add);
         if (r == HistoryMergeResult::Replaced) {
-            LOGW(kTag, "optional gas changed from type %u to %u in quarter %u; earlier part dropped",
+            LOGW(kTag, "metric %d source changed from %u to %u in quarter %u; earlier part dropped", m,
                  static_cast<unsigned>(previous_source), static_cast<unsigned>(add.source),
                  static_cast<unsigned>(quarter_.start_epoch));
         } else if (r == HistoryMergeResult::CountOverflow) {

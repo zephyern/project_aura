@@ -49,6 +49,11 @@ struct SensorData {
     bool pressure_valid = false;
     bool pressure_delta_3h_valid = false;
     bool pressure_delta_24h_valid = false;
+    // Optional outdoor temperature (docs/WEATHER.md), always in C. Valid only
+    // while the latest weather check succeeded; never an older value.
+    float outdoor_temp = 0.0f;
+    bool outdoor_temp_valid = false;
+    uint8_t outdoor_temp_source = 0; // ChartsHistory::OutdoorSource
 };
 
 struct AirQuality {

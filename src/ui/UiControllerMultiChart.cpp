@@ -84,6 +84,7 @@ const UiController::MultiSeriesStyle UiController::kMultiSeriesStyles[ChartsHist
     {0xA1887F, GraphValueTransform::None, true},         // PM4
     {0x81C784, GraphValueTransform::None, true},         // PM10
     {0x64B5F6, GraphValueTransform::None, true},         // optional gas
+    {0xFFF176, GraphValueTransform::Temperature, false}, // outdoor temperature
 };
 
 const UiController::MultiRange UiController::kMultiRanges[] = {
@@ -161,7 +162,8 @@ const char *UiController::multi_series_unit(int metric) const {
     switch (metric) {
         case ChartsHistory::METRIC_CO2:
         case ChartsHistory::METRIC_CO: return "ppm";
-        case ChartsHistory::METRIC_TEMPERATURE: return temp_units_c ? UiText::UnitC() : UiText::UnitF();
+        case ChartsHistory::METRIC_TEMPERATURE:
+        case ChartsHistory::METRIC_OUTDOOR_TEMP: return temp_units_c ? UiText::UnitC() : UiText::UnitF();
         case ChartsHistory::METRIC_HUMIDITY: return "%";
         case ChartsHistory::METRIC_PRESSURE: return pressure_display_unit();
         case ChartsHistory::METRIC_VOC:
