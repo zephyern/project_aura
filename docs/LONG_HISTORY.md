@@ -313,3 +313,20 @@ JetBrains Mono font, so the three code points are in `jet_reg_18`'s symbols in
 Studio 0.27.1's bundled lv_font_conv 1.5.3 using the options recorded in its header
 plus the three symbols (the only other change is the recorded output path).
 `tools/check_ui_font_coverage.py` requires them.
+
+## Storage health
+
+`src/modules/StorageHealth.{h,cpp}` turns the state of the card and the writers into one
+verdict (pure), in this order: `Off` (log off), `NoCard`, `RecordingStopped` (card full
+and either the full action is "stop recording" or there is nothing left to delete),
+`WriteError` (with its failure kind), `ClockBehind`, `Full` (deleting the oldest detail),
+`LowSpace` (fewer than 30 days left), `Ok`.
+
+- The card is full when less than one day's data fits, or a write failed for lack of
+  space.
+- Days left = free bytes / bytes per day, where bytes per day is measured on the card:
+  the mean size of the last complete days' 15-minute files (up to 7), plus 24 hourly
+  records and one daily record at their measured mean length. Until one day is
+  complete the rate is unknown and no low-space alert is shown.
+
+Host tests: `test/test_storage_health`.
