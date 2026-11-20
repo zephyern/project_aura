@@ -480,13 +480,20 @@ bool LongHistory::firstDay(char *out, size_t len) const {
 
 namespace {
 
+constexpr uint32_t kDayKeyYearDivisor = 10000U; // YYYYMMDD -> YYYY
+
 struct ChartPass {
     LongHistory::ChartRecordFn fn;
     void *context;
+    uint32_t start;
+    uint32_t end;
 };
+bool inChartRange(const ChartPass &pass, const QuarterHourRow::SpanRow &row) {
+    return row.start_epoch >= pass.start && row.start_epoch < pass.end;
+}
 bool chartRecord(const QuarterHourRow::SpanRow &row, size_t, void *context) {
     const ChartPass &pass = *static_cast<const ChartPass *>(context);
-    pass.fn(row, pass.context);
+    if (inChartRange(pass, row)) pass.fn(row, pass.context);
     return true;
 }
 
@@ -494,19 +501,54 @@ bool chartRecord(const QuarterHourRow::SpanRow &row, size_t, void *context) {
 
 LongHistory::ChartRead LongHistory::hourlyChart(uint32_t start, uint32_t end, ChartRecordFn fn,
                                                 void *context) const {
+    return chartRead(ChartLevel::Hourly, start, end, fn, context);
+}
+
+LongHistory::ChartRead LongHistory::dailyChart(uint32_t start, uint32_t end, ChartRecordFn fn,
+                                               void *context) const {
+    return chartRead(ChartLevel::Daily, start, end, fn, context);
+}
+
+LongHistory::ChartRead LongHistory::chartRead(ChartLevel level, uint32_t start, uint32_t end, ChartRecordFn fn,
+                                              void *context) const {
     if (!enabled_) return ChartRead::Off;
-    Lock lock(*this, 0); // the main loop's own pass; a web operation holds it only briefly
-    if (!lock.locked() || op_running_) return ChartRead::Busy;
-    ChartPass pass{fn, context};
-    HourlySummary::ReadStats stats;
-    if (HourlySummary::readRange(storage_, start, end, &chartRecord, &pass, stats) !=
-        HourlySummary::ReadResult::Read) {
-        LOGE(kTag, "hourly chart read failed (%u bad lines)", static_cast<unsigned>(stats.skipped));
+    if (!fn || end <= start) {
+        LOGE(kTag, "chart read with no callback or an empty range");
         return ChartRead::Failed;
     }
-    if (hourly_.hasOpenBucket()) {
-        const HistoryBucket::Record &open = hourly_.openRecord();
-        if (!open.empty() && open.start_epoch >= start && open.start_epoch < end) fn(open, context);
+    Lock lock(*this, 0); // the main loop's own pass; a web operation holds it only briefly
+    if (!lock.locked() || op_running_) return ChartRead::Busy;
+    ChartPass pass{fn, context, start, end};
+    const SummaryWriter *open_writer = &hourly_;
+    if (level == ChartLevel::Hourly) {
+        HourlySummary::ReadStats stats;
+        if (HourlySummary::readRange(storage_, start, end, &chartRecord, &pass, stats) !=
+            HourlySummary::ReadResult::Read) {
+            LOGE(kTag, "hourly chart read failed (%u bad lines)", static_cast<unsigned>(stats.skipped));
+            return ChartRead::Failed;
+        }
+    } else {
+        uint32_t first_day = 0;
+        uint32_t last_day = 0;
+        if (!LocalDate::localDayKey(static_cast<time_t>(start), first_day) ||
+            !LocalDate::localDayKey(static_cast<time_t>(end - 1U), last_day)) {
+            LOGE(kTag, "daily chart range has no local date");
+            return ChartRead::Failed;
+        }
+        for (uint32_t year = first_day / kDayKeyYearDivisor; year <= last_day / kDayKeyYearDivisor; ++year) {
+            DailySummary::ReadStats stats;
+            if (DailySummary::readYear(storage_, year, &chartRecord, &pass, stats) !=
+                DailySummary::ReadResult::Read) {
+                LOGE(kTag, "daily chart read of %u failed (%u bad lines)", static_cast<unsigned>(year),
+                     static_cast<unsigned>(stats.skipped));
+                return ChartRead::Failed;
+            }
+        }
+        open_writer = &daily_;
+    }
+    if (open_writer->hasOpenBucket()) {
+        const HistoryBucket::Record &open = open_writer->openRecord();
+        if (!open.empty() && inChartRange(pass, open)) fn(open, context);
     }
     return ChartRead::Read;
 }

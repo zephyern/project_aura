@@ -77,6 +77,9 @@ public:
     using ChartRecordFn = void (*)(const QuarterHourRow::SpanRow &row, void *context);
     // Hourly records starting in [start, end).
     ChartRead hourlyChart(uint32_t start, uint32_t end, ChartRecordFn fn, void *context) const;
+    // Daily records starting in [start, end), read from the year files of
+    // the local years the range touches.
+    ChartRead dailyChart(uint32_t start, uint32_t end, ChartRecordFn fn, void *context) const;
     // Local day key and largest sample count of today's record so far.
     bool currentDay(uint32_t &day_key, uint32_t &sample_count) const;
     bool lastWriteOk() const;
@@ -111,6 +114,9 @@ public:
     OpStatus clearFuture(time_t now, OpResults &results);
 
 private:
+    enum class ChartLevel : uint8_t { Hourly, Daily };
+    ChartRead chartRead(ChartLevel level, uint32_t start, uint32_t end, ChartRecordFn fn, void *context) const;
+
     class Lock {
     public:
         Lock(const LongHistory &owner, uint32_t timeout_ms);
